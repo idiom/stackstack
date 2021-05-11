@@ -20,6 +20,7 @@ BAD_STR = ['ffffffff', 'ffffffffffffffff']
 
 logging.basicConfig(format='stackstack:%(levelname)s:%(message)s', level=logging.DEBUG)
 
+
 class StackStack(object):
 
     def __init__(self, loglevel=logging.DEBUG):
@@ -93,140 +94,6 @@ class StackStack(object):
 
         return 0
 
-    def get_emulation_candidate(self, start, end=None, color_blocks=False):
-
-        match_result = {
-            'data': None,
-            'function_decrypt': None,
-            'string_length': 0,
-            'ireg': None,
-            'mrefs': []
-        }
-
-        function_start = idc.get_func_attr(start, idc.FUNCATTR_START)
-        function_end = idc.get_func_attr(start, idc.FUNCATTR_END)
-
-        self.logger.debug('Function Start: %x' % function_start)
-        self.logger.debug('Function End:   %x' % function_end)
-        self.logger.debug('Candidate End:  %x' % end)
-
-        uses_function = False
-        found_compare = False
-
-        cur_addr = start
-
-        if cur_addr <= function_start + 16:
-            cur_addr = function_start
-
-        match_result['offset'] = idaapi.get_imagebase() - cur_addr
-
-        if end:
-            function_end = end
-
-        string_length = 0
-        ireg = None
-
-        while cur_addr <= function_end:
-            self.logger.debug('%x: %s' % (cur_addr, idc.generate_disasm_line(cur_addr, 0)))
-
-            if idc.print_insn_mnem(cur_addr) == 'jb':
-                if not end:
-                    cur_addr = idc.next_head(cur_addr, function_end)
-                    end = cur_addr
-                    break
-            elif idc.print_insn_mnem(cur_addr) == 'movdqa':
-                # TODO: change this to a starts with mov and then check the type of the op
-
-                op = (idc.print_operand(cur_addr, 1))
-                address = int(op.split("_")[1], 16)
-                offset_data = idc.get_bytes(address, 16)
-                self.logger.debug(binascii.hexlify(offset_data))
-                match_result['mrefs'].append({'address': address, 'size': 1024, 'data': offset_data})
-                cur_addr = idc.next_head(cur_addr, function_end)
-                continue
-
-            # elif idc.print_insn_mnem(cur_addr) == 'mov':
-            #    idc.set_color(cur_addr, CIC_ITEM, 0xd1d1cc)
-
-            elif idc.print_insn_mnem(cur_addr) == 'jmp':
-                if not end:
-                    if found_compare:
-                        cur_addr = idc.next_head(cur_addr, function_end)
-                        end = cur_addr
-                        break
-
-            elif idc.print_insn_mnem(cur_addr) == 'add':
-                self.logger.debug('%s: %s' % (hex(cur_addr), idc.generate_disasm_line(cur_addr, 0)))
-
-                if idc.get_operand_type(cur_addr, 0) == idc.o_reg \
-                        and idc.get_operand_type(cur_addr, 1) == idc.o_reg:
-                    self.logger.debug(idc.print_operand(cur_addr, 1))
-
-                    if self.arch == 64:
-                        try:
-                            ireg = SUE.RegisterMap[idc.print_operand(cur_addr, 1)]
-                        except KeyError:
-                            pass
-                    else:
-                        ireg = SUE.RegisterMap[idc.print_operand(cur_addr, 1)]
-                    self.logger.debug("Found cursor :: %s" % idc.print_operand(cur_addr, 1))
-
-            elif idc.print_insn_mnem(cur_addr) == 'cmp':
-                if idc.get_operand_type(cur_addr, 0) == idc.o_reg \
-                        and idc.get_operand_type(cur_addr, 1) == idc.o_imm:
-                    try:
-                        self.logger.debug("Found compare..")
-                        found_compare = True
-                        string_length = int(idc.print_operand(cur_addr, 1)) + 1
-                        self.logger.debug("Setting String length: %d" % string_length)
-                    except ValueError:
-                        string_length = int(idc.print_operand(cur_addr, 1)[:-1], 16) + 1
-                        self.logger.debug("Setting String length: %d" % string_length)
-
-                        # idc.set_color(cur_addr, CIC_ITEM, 0x00c3FF)
-                        # idc.set_color(cur_addr, CIC_ITEM, 0x00C3FF)
-                        # print(hex(cur_addr), idc.generate_disasm_line(cur_addr, 0))
-
-                    if end:
-                        break
-
-            elif idc.print_insn_mnem(cur_addr) == 'call':
-                self.logger.debug("Found Call..")
-                uses_function = True
-                fref = idc.get_name_ea(cur_addr, idc.print_operand(cur_addr, 0))
-
-                defunct_start = idc.get_func_attr(fref, idc.FUNCATTR_START)
-                defunct_end = idc.get_func_attr(fref, idc.FUNCATTR_END)
-                # func_bytes = idc.get_bytes(defunct_start+5, defunct_end - defunct_start+5)
-
-                func_bytes = idc.get_bytes(defunct_start, defunct_end - defunct_start)
-                self.logger.debug("  --> Start: %x" % defunct_start)
-                self.logger.debug("  --> End: %x" % defunct_end)
-                self.logger.debug("  --> Size: %d" % len(func_bytes))
-
-                match_result['mrefs'].append(
-                    {'address': defunct_start, 'size': len(func_bytes) + 16, 'data': func_bytes})
-
-                cur_addr = idc.next_head(cur_addr, function_end)
-                if not end:
-                    end = cur_addr
-                break
-
-            cur_addr = idc.next_head(cur_addr, function_end)
-
-        if end:
-
-            match_result['string_length'] = string_length
-            match_result['ireg'] = ireg
-            self.logger.debug("Bytes Start: %x" % start)
-            self.logger.debug("Bytes End: %x" % end)
-            emu_data = idc.get_bytes(start, end - start)
-
-            if uses_function:
-                match_result['function_decrypt'] = True
-            match_result['data'] = emu_data
-        return match_result
-
     def detect_blocks(self, offset, trace_end=False):
         """
         Use ida basic blocks to detect last block etc.
@@ -247,17 +114,14 @@ class StackStack(object):
         if offset <= function_start + 64:
             return function_start
 
-        #idaapi.decode_insn(ins, idc.prev_head(end))
-
         while offset >= function_start:
             ins = ida_ua.insn_t()
 
             idaapi.decode_insn(ins, offset)
 
-            if ins.itype in [idaapi.NN_mov, idaapi.NN_sub, idaapi.NN_xor, idaapi.NN_lea]: # @'mov', 'sub', 'xor', 'lea']:
+            if ins.itype in [idaapi.NN_mov, idaapi.NN_sub, idaapi.NN_xor, idaapi.NN_lea]:
                 if ins.itype == idaapi.NN_mov:
                     last_mov = True
-                    # if idc.get_operand_type(cur_addr, 0) == 2 and idc.get_operand_type(cur_addr, 1) == 2:
                     if idc.get_operand_type(offset, 0) in [idaapi.o_mem, idaapi.o_reg] and \
                             idc.get_operand_type(offset, 1) in [idaapi.o_mem, idaapi.o_reg]:
                         blob_start = idc.next_head(offset)
@@ -292,55 +156,6 @@ class StackStack(object):
         self.logger.debug("BLOB Start: %x" % blob_start)
         self.logger.debug(idc.print_insn_mnem(blob_start))
         return blob_start
-
-    def get_current_blob(self, offset, trace_end=False):
-
-        function_start = idc.get_func_attr(offset, idc.FUNCATTR_START)
-        function_end = idc.get_func_attr(offset, idc.FUNCATTR_END)
-
-        cur_addr = offset
-        blob_start = 0
-        blob_end = 0
-        last_mov = True
-
-        # Back trace
-        if cur_addr <= function_start - 16:
-            return blob_start, 0
-
-        while cur_addr >= function_start:
-            if idc.print_insn_mnem(cur_addr) in ['mov', 'sub', 'xor']:
-
-                if idc.print_insn_mnem(cur_addr) == "mov":
-                    last_mov = True
-                    if idc.get_operand_type(cur_addr, 0) == 2 and idc.get_operand_type(cur_addr, 1) == 2:
-                        blob_start = idc.next_head(cur_addr)
-                        break
-                elif idc.print_insn_mnem(cur_addr) == "xor":
-                    if idc.print_operand(cur_addr, 0) != idc.print_operand(cur_addr, 1):
-                        blob_start = idc.next_head(cur_addr)
-                        break
-                    last_mov = False
-                elif idc.print_insn_mnem(cur_addr) == "sub":
-                    if not last_mov:
-                        blob_start = idc.next_head(cur_addr)
-                        break
-                    last_mov = False
-
-                cur_addr = idc.prev_head(cur_addr, function_start)
-                blob_start = cur_addr
-
-                if cur_addr <= function_start:
-                    self.logger.debug("Error back-tracing ADVBLOB...Using function start")
-                    blob_start = function_start
-                    break
-            else:
-                blob_start = idc.next_head(cur_addr)
-                break
-
-        self.logger.debug("BLOB Start: %x" % blob_start)
-        self.logger.debug(idc.print_insn_mnem(blob_start))
-
-        return blob_start, blob_end
 
     def process_matches(self, matches, function_offset=0):
         """
