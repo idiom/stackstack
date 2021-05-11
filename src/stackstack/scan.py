@@ -2,6 +2,7 @@ import yara
 import idautils
 import idc
 import logging
+import os.path
 
 class ScanEngineBase(object):
     pass
@@ -32,6 +33,14 @@ class YaraScanner(ScanEngineBase):
 
         self.raw_rules.extend(rules)
         self.rules = self._compile_rules(self.raw_rules)
+
+    def _compile_ext_rules(self, rulefile):
+        if os.path.isfile(rulefile):
+            try:
+                ext_rules = yara.compile(rulefile)
+                self.rules.extend(ext_rules)
+            except Exception as ex:
+                self.logger.error("Error loading rulefile: %s" % ex)
 
     def _compile_rules(self, rules):
         compiled = []

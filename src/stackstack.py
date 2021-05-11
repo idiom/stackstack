@@ -15,7 +15,6 @@ from stackstack.utils import IdaHelpers, Update
 from stackstack.patch import StringPatcher
 
 BAD = [0xffffffff, 0xffffffffffffffff]
-BAD_STR = ['ffffffff', 'ffffffffffffffff']
 
 logging.basicConfig(format='stackstack:%(levelname)s:%(message)s', level=logging.DEBUG)
 
@@ -194,7 +193,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         start = idc.read_selection_start()
         end = idc.read_selection_end()
 
-        if start == 0xffffffffffffffff:
+        if start in BAD:
             self.logger.error("Nothing selected")
             idc.warning("No instructions selected!")
             return
@@ -350,7 +349,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         start = idc.read_selection_start()
         end = idc.read_selection_end()
 
-        if start == 0xffffffffffffffff:
+        if start in BAD:
             self.logger.debug("Nothing selected")
             idc.warning("Nothing Selected!")
             return
@@ -408,7 +407,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
     wanted_name = "StackStack"
     wanted_hotkey = ""
 
-    _version = 1.0
+    _version = 1.01
 
     def init(self):
         try:
