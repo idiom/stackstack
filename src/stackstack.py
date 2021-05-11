@@ -331,7 +331,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         self.logger.debug("Snippet Start: %x" % start)
 
         if start:
-            end = stacks.find_end(start, 0)
+            end = stacks.find_end(start)
             if end:
                 string_length = stacks.get_string_length(start)
                 self.logger.debug("Processing: start: %x, end: %x, string_length: %d" % (start, end, string_length))
@@ -359,6 +359,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
             self._process(start, end)
         else:
             idc.warning("Selected Block ")
+
 
 class ScanHandler(ida_kernwin.action_handler_t):
 
@@ -404,7 +405,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
     wanted_name = "StackStack"
     wanted_hotkey = ""
 
-    _PLUGIN_VERSION = 1.0
+    _version = 1.0
 
     def init(self):
         try:
@@ -414,8 +415,8 @@ class StackStackPlugin(ida_idaapi.plugin_t):
                 self.logger.setLevel(logging._checkLevel(self.config['loglevel'].upper()))
             except ValueError:
                 self.logger.setLevel(logging.DEBUG)
-            self.logger.info("StackStack version: %d" % StackStackPlugin._PLUGIN_VERSION)
-            version_check = Update.check_version(StackStackPlugin._PLUGIN_VERSION)
+            self.logger.info("StackStack version: %s" % StackStackPlugin._version)
+            version_check = Update.check_version(StackStackPlugin._version)
             if version_check > 0:
                 idc.warning("StackStack version %s is now available for download." % version_check)
             self.logger.debug(self.config)
