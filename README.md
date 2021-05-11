@@ -50,9 +50,12 @@ Example config file
 Emulates the current block or selected bytes and attempts to extract the decoded bytes.
 
  - Decode Selected - Emulate the selected bytes
- - Decode Current - Based on the current cursor position, detect the blocks to emulate. 
+ - Decode Current - Based on the current cursor position in the decompiler window. Detect the blocks to emulate.
+   - Shortcut: `shift-x`
  - Decode All - Scan for and attempt to decode each identified block. 
  - Decode Function - Scan the current function and attempt to decode the found blocks.
+
+![Example of decode options](docs/decode.png "Decode Options")
 
 ### Trace 
 
@@ -65,4 +68,6 @@ Emulate the current block and return the end state of all registers.
 
 ### Scan
 
-Scan for ADVObfuscated Strings or matches based on the passed yara rules.  
+Scan for ADVObfuscated Strings or matches based on the passed yara rules. 
+
+Shortcut `shift-s`
