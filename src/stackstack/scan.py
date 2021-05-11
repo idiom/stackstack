@@ -4,8 +4,10 @@ import idc
 import logging
 import os.path
 
+
 class ScanEngineBase(object):
     pass
+
 
 class YaraScanner(ScanEngineBase):
     """

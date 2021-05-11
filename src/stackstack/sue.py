@@ -6,14 +6,16 @@ import idaapi
 import idautils
 import idc
 import ida_ua
-import string
 import logging
+
 
 class EmulationTimeout(Exception):
     pass
 
+
 class IdaUnicornMap(Enum):
     pass
+
 
 class SUE(object):
     """
@@ -89,7 +91,8 @@ class SUE(object):
         UC_MEM_READ_AFTER: "UC_MEM_READ_AFTER"
     }
 
-    def __init__(self, code_base=0x18000000, stack_base=0xA0000000, stack_size=0x10000, sg=0x28, loglevel=logging.DEBUG, trace=False):
+    def __init__(self, code_base=0x18000000, stack_base=0xA0000000, stack_size=0x10000, sg=0x28, loglevel=logging.DEBUG,
+                 trace=False):
         """
         What properties are really useful here?
 
@@ -419,7 +422,7 @@ class SUE(object):
             self.logger.debug('Stack Offset: %x' % self.stack_offset)
             self.logger.debug('Last Write Address:: %x' % self.last_write_address)
 
-            #if cursor < self.last_write_address:
+            # if cursor < self.last_write_address:
             #    test = mu.mem_read(cursor, self.last_write_address - cursor)
             #    print(test)
 
@@ -439,11 +442,9 @@ class SUE(object):
                 counter = 0
                 while cursor < self.stack_base + self.stack_size:
                     if counter > 512:
-                         break
+                        break
                     # counter += 1
                     data = mu.mem_read(cursor, 1)
-                    if data[1] == '\x00':
-                        is_unicode = True
                     if self.stack_grow:
                         cursor += 1
                     else:
@@ -499,9 +500,9 @@ class SUE(object):
                 self.read_switch = False
 
                 # Enable Tracing
-                #self.trace = True
+                # self.trace = True
                 self.stack_data = ""
                 self.decoded_stack = ""
                 return self.deobfuscate_stack(start_address, end_address, retry=1, mrefs=mrefs, mode=mode)
             else:
-                self.logger.error(" [!] Fatal error emulating [%s]" % e)
+                self.logger.error(" [!] Fatal error emulating [%s]" % e

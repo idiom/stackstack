@@ -3,9 +3,6 @@ import ida_hexrays
 import idc
 import idaapi
 import ida_ua
-import struct
-import binascii
-import ida_kernwin
 import ida_nalt
 import ida_bytes
 import logging
@@ -15,8 +12,10 @@ from capstone import *
 
 from stackstack.utils import IdaHelpers
 
+
 class PatchException(Exception):
     pass
+
 
 class StringPatcher(object):
 
@@ -37,7 +36,6 @@ class StringPatcher(object):
         if not idaapi.get_segm_by_name(self.name):
             IdaHelpers.add_section(self.offset, self.name, bitness=IdaHelpers.get_bitness(), size=self.size, base=0)
         return idaapi.get_segm_by_name(self.name)
-
 
     def generate_patch_bytes(self, code_offset, string_offset):
         """
@@ -208,7 +206,8 @@ class StringPatcher(object):
             raise PatchException("Invalid patch start or end")
 
         if not string_offset or not patch_offset:
-            self.logger.error("No string or patch offset provided patch_offset: %x, string_offset: %x" % (patch_offset, string_offset))
+            self.logger.error("No string or patch offset provided patch_offset: %x, string_offset: %x" %
+                              (patch_offset, string_offset))
             raise PatchException("No string or patch offset provided")
 
         ins = ida_ua.insn_t()
@@ -244,63 +243,3 @@ class StringPatcher(object):
             # Do I need this...ffs this API
             ida_auto.auto_wait()
             self.logger.debug("Patch complete")
-
-
-class Patcher(object):
-
-    @staticmethod
-    def null_patch(self, offset, patch_size, data):
-
-        if not offset or not patch_size:
-            raise PatchException("offset or patch_size is null")
-
-        if len(data) > patch_size:
-            raise PatchException("Patch exceeds existing space.")
-
-        nop = b"\x90"
-
-        print(idaapi.bytesize(offset))
-        print(idaapi.get_item_size(offset))
-
-        # Generate NOP Overlay
-        # Note patch_bytes stores the original bytes vs put_bytes
-        # idc.ida_bytes.patch_bytes(offset, nop_string)
-        cursor = offset
-
-        patched_bytes = 0
-
-        new_bytes = list(data)
-        print(new_bytes)
-        # print new_bytes
-        patch_cursor = 0
-
-        end = False
-        while cursor < offset + patch_size:
-            item_size = idaapi.get_item_size(offset)
-
-            if idc.print_insn_mnem(cursor) == 'mov':
-                byte_size = idaapi.bytesize(offset)
-                if byte_size == 1:
-                    patched_bytes += item_size
-
-                    try:
-                        idc.patch_byte(cursor + (item_size - byte_size), ord(new_bytes[patch_cursor]))
-                    except IndexError:
-                        idc.patch_byte(cursor + (item_size - byte_size), 0)
-                        end = True
-                    patch_cursor += 1
-            else:
-                patched_bytes += item_size
-
-            if end:
-                break
-            cursor = idc.next_head(cursor)
-
-        nop_string = nop * (patch_size - patched_bytes)
-
-        idc.ida_bytes.patch_bytes(cursor, nop_string)
-
-        # print(idaapi.bytesize(offset))
-        # print(idaapi.get_item_size(offset))
-
-        # Identify where existing data is being moved.
