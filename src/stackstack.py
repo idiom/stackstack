@@ -171,13 +171,15 @@ class StackStack(object):
         idc.warning("Not Implemented")
         return
 
+
 class DecodeHandler(ida_kernwin.action_handler_t):
     """
         Handle hot key and mouse actions.
 
     """
 
-    def __init__(self, patch=True, patch_type=1, patch_section=".stackstack", patch_section_size=0x1000, set_bookmarks=True):
+    def __init__(self, patch=True, patch_type=1, patch_section=".stackstack", patch_section_size=0x1000,
+                 set_bookmarks=True):
         ida_kernwin.action_handler_t.__init__(self)
         self.scanner = YaraScanner()
         self.patch = patch
@@ -228,7 +230,6 @@ class DecodeHandler(ida_kernwin.action_handler_t):
             self.logger.debug("Ends in a call skip patching")
             return 0
 
-
     def _process(self, start, end, string_length=0):
         self.logger.debug("_process->enter")
 
@@ -276,7 +277,6 @@ class DecodeHandler(ida_kernwin.action_handler_t):
                         self.logger.info("patch_type_0 - Not Implemented")
                 else:
                     IdaHelpers.add_comment(start, decoded)
-
 
     def update(self, ctx):
         """
@@ -536,10 +536,9 @@ class StackStackPlugin(ida_idaapi.plugin_t):
         :return:
         """
 
-        #scf = StackConfigForm()
-        #scf.Show("StackStack Trace")
+        # scf = StackConfigForm()
+        # scf.Show("StackStack Trace")
         pass
-
 
     def term(self):
         """
@@ -548,6 +547,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
         if self.actions:
             for action_desc in self.actions:
                 ida_kernwin.unregister_action(action_desc.name)
+
 
 class Menus(ida_kernwin.UI_Hooks):
     """
@@ -568,6 +568,7 @@ class Menus(ida_kernwin.UI_Hooks):
             ida_kernwin.attach_action_to_popup(form, popup, "ssp_scan", "StackStack/")
             ida_kernwin.attach_action_to_popup(form, popup, "ssp_decode_all", "StackStack/Decode/")
             ida_kernwin.attach_action_to_popup(form, popup, "ssp_decode_func", "StackStack/Decode/")
+
 
 def PLUGIN_ENTRY():
     return StackStackPlugin()
