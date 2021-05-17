@@ -341,14 +341,13 @@ class SUE(object):
             result['data_length'] = len(data)
         return result
 
-    def deobfuscate_stack(self, start_address, end_address, mrefs=[], retry=0, string_length=0, mode=UC_MODE_32):
+    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0, mode=UC_MODE_32):
         """
         Primarily tested with ADVObfuscated strings. Works with similar methods which write obfuscated bytes to the
         stack, deobfucstate them, and return the result.
 
         :param start_address:
         :param end_address:
-        :param mrefs:
         :param retry:
         :param string_length:
         :param code_size:
@@ -402,11 +401,12 @@ class SUE(object):
 
             # Check if a string length is defined.
             if string_length == 0:
+                pass
                 # TODO: This would never be set..update this
-                if mrefs:
-                    result = self._get_func_decoded(mu, mode)
-                    if result:
-                        return result
+                # if mrefs:
+                #     result = self._get_func_decoded(mu, mode)
+                #     if result:
+                #         return result
 
             self.logger.debug("Attempting to auto extract data...")
 
