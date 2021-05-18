@@ -1,6 +1,7 @@
 import yara
 import idautils
 import idc
+import idaapi
 import logging
 import os.path
 
@@ -13,7 +14,6 @@ class YaraScanner(ScanEngineBase):
     """
 
     """
-    VERSION = "1.0.0"
 
     def __init__(self, rule_file=None, rules=[], loglevel=logging.DEBUG):
         self.logger = logging.getLogger()
@@ -23,12 +23,25 @@ class YaraScanner(ScanEngineBase):
             # load external rule file.
             pass
 
-        self.raw_rules = [
+
+        x64_rules = [
             """rule scan_a{strings: $ = {c6 45 ?? 00 c6 45 ?? ?? c6 45} condition: all of them}""",
             """rule scan_b{strings: $ = {c6 85 [2-3] ff ff 00 [0-2] c6 85 [2-3] ff ff} condition: all of them}""",
             """rule scan_c{strings: $ = {(c6|c7) 4? [2-5] (c6|c7) 4? } condition: all of them}""",
             """rule scan_d{strings: $ = {(c6|c7) 4? ?? 00 (c6|c7) 4? ?? ?? (c6|c7) 4? } condition: all of them}"""
         ]
+
+        x86_rules = [
+            """rule scan_a{strings: $ = {c6 45 ?? ?? c6 45 ?? ?? c6 45 ?? ?? c6 45} condition: all of them}"""
+        ]
+
+        self.raw_rules = []
+
+        if idaapi.get_inf_structure().is_64bit():
+            self.raw_rules = x64_rules
+        else:
+            self.raw_rules = x86_rules
+
 
         # """rule scan_d{strings: $ = {c6 40 ?? 00 c6 40 ?? ?? c6 40 } condition: all of them}""",
         # """rule scan_c{strings: $ = {c6 4? ?? ?? c6 4? ?? ?? c6 4? ?? ?? c6 4? ?? ?? } condition: all of them}"""
