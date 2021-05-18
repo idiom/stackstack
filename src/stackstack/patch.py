@@ -48,28 +48,33 @@ class StringPatcher(object):
         :return:
         """
         mode = CS_MODE_64
+        ksmode = KS_MODE_64
         if IdaHelpers.get_arch() < 64:
             mode = CS_MODE_32
+            ksmode = KS_MODE_32
         md = Cs(CS_ARCH_X86, mode)
         cdata = idaapi.get_bytes(code_offset, (idaapi.get_item_size(code_offset)))
 
         #
-        # TODO: Fix this s-
+        # TODO: Fix this s- and move to use Assemble vs using keystone
         #
-        code = "push r12;lea r12,cs:[rip+%d];mov [%s, r12; pop r12"
-        ripoffset = string_offset - (code_offset + 2)
-        self.logger.debug("Patch offset: %x" % code_offset)
-        self.logger.debug("RIP offset: %x" % (code_offset + 2))
-        self.logger.debug("string offset: %x" % string_offset)
-        self.logger.debug("RIP Offset: %x" % ripoffset)
+        if mode > 4:
+            code = "push r12;lea r12,cs:[rip+%d];mov [%s, r12; pop r12"
+            ripoffset = string_offset - (code_offset + 2)
+            self.logger.debug("RIP Offset: %x" % ripoffset)
+            for instr in md.disasm(cdata, code_offset):
+                code = code % (ripoffset, instr.op_str.split(",")[0].split(" [")[1])
+                break
+        else:
+            return b''
 
-        for instr in md.disasm(cdata, code_offset):
-            code = code % (ripoffset, instr.op_str.split(",")[0].split(" [")[1])
-            break
+        self.logger.debug("Patch offset: %x" % code_offset)
+        self.logger.debug("string offset: %x" % string_offset)
 
         try:
             # Initialize engine in X86-32bit mode
-            ks = Ks(KS_ARCH_X86, KS_MODE_64)
+
+            ks = Ks(KS_ARCH_X86, ksmode)
             bytecode, count = ks.asm(code)
             if count > 0:
                 return bytes(bytecode)
@@ -218,6 +223,10 @@ class StringPatcher(object):
             self.logger.debug("OK")
             bytecode = self.generate_patch_bytes(patch_offset, string_offset)
 
+            if len(bytecode) == 0:
+                self.logger.error("Error generating patch..skipping")
+                return False
+
             # line_size = idaapi.get_item_size(patch_offset)
 
             patch_data = b"\x90" * ((end - patch_offset) - len(bytecode))
@@ -232,6 +241,7 @@ class StringPatcher(object):
             # Note: Undefine then mark the range as code..
             # undefine the bytes
             ida_bytes.del_items(patch_offset, ida_bytes.DELIT_SIMPLE, len(patch_data))
+
             # Mark the range as code
             idc.auto_mark_range(patch_offset+2, patch_offset+len(bytecode), idc.AU_CODE)
             if self.decompile:
@@ -243,3 +253,4 @@ class StringPatcher(object):
             # Do I need this...ffs this API
             ida_auto.auto_wait()
             self.logger.debug("Patch complete")
+            return True

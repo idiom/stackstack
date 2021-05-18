@@ -23,7 +23,6 @@ class YaraScanner(ScanEngineBase):
             # load external rule file.
             pass
 
-
         x64_rules = [
             """rule scan_a{strings: $ = {c6 45 ?? 00 c6 45 ?? ?? c6 45} condition: all of them}""",
             """rule scan_b{strings: $ = {c6 85 [2-3] ff ff 00 [0-2] c6 85 [2-3] ff ff} condition: all of them}""",
@@ -32,7 +31,8 @@ class YaraScanner(ScanEngineBase):
         ]
 
         x86_rules = [
-            """rule scan_a{strings: $ = {c6 45 ?? ?? c6 45 ?? ?? c6 45 ?? ?? c6 45} condition: all of them}"""
+            """rule scan_a{strings: $ = {c6 45 ?? ?? c6 45 ?? ?? c6 45 ?? ?? c6 45} condition: all of them}""",
+            """rule scan_b{strings: $ = {8b ?? ?? ff ff ff 34 ?? 88 ?? ?? ff ff ff 8b ?? ?? ff ff ff} condition: all of them}"""
         ]
 
         self.raw_rules = []
@@ -41,10 +41,6 @@ class YaraScanner(ScanEngineBase):
             self.raw_rules = x64_rules
         else:
             self.raw_rules = x86_rules
-
-
-        # """rule scan_d{strings: $ = {c6 40 ?? 00 c6 40 ?? ?? c6 40 } condition: all of them}""",
-        # """rule scan_c{strings: $ = {c6 4? ?? ?? c6 4? ?? ?? c6 4? ?? ?? c6 4? ?? ?? } condition: all of them}"""
 
         self.raw_rules.extend(rules)
         self.rules = self._compile_rules(self.raw_rules)

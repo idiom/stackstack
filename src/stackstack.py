@@ -102,6 +102,17 @@ class StackStack(object):
         """
         pass
 
+    def _has_call(self, start, end):
+
+        while start < end:
+            ins = ida_ua.insn_t()
+            idaapi.decode_insn(ins, start)
+            if ins.itype == idaapi.NN_call:
+                self.logger.debug("Found call at 0x%x..skipping using function start." % start)
+                return True
+            start = idc.next_head(start, end)
+        return False
+
     def backtrace_start(self, offset):
         """
         From the current offset - backtrace and find the best instruction to start emulation.
@@ -111,36 +122,47 @@ class StackStack(object):
         """
         function_start = idc.get_func_attr(offset, idc.FUNCATTR_START)
         blob_start = 0
-        last_mov = True
+        last_mov_or_alt = True
 
         # Back trace
         if offset <= function_start + 64:
-            return function_start
+            """
+            Note this can cause issues. If there is a call or other that is expected to have
+            initialized data. Do a quick check first before returning the function start                         
+            """
+
+            if not self._has_call(function_start, offset):
+                return function_start
 
         while offset >= function_start:
             ins = ida_ua.insn_t()
 
             idaapi.decode_insn(ins, offset)
+            self.logger.debug("0x%x %s" % (offset, idc.generate_disasm_line(idc.prev_head(offset), 0)))
 
-            if ins.itype in [idaapi.NN_mov, idaapi.NN_sub, idaapi.NN_xor, idaapi.NN_lea]:
+            if ins.itype in [idaapi.NN_mov, idaapi.NN_sub, idaapi.NN_xor, idaapi.NN_lea, idaapi.NN_add, idaapi.NN_inc]:
                 if ins.itype == idaapi.NN_mov:
-                    last_mov = True
+                    last_mov_or_alt = True
                     if idc.get_operand_type(offset, 0) in [idaapi.o_mem, idaapi.o_reg] and \
                             idc.get_operand_type(offset, 1) in [idaapi.o_mem, idaapi.o_reg]:
                         blob_start = idc.next_head(offset)
                         break
                 elif ins.itype == idaapi.NN_xor:
                     if idc.print_operand(offset, 0) != idc.print_operand(offset, 1):
-                        blob_start = idc.next_head(offset)
-                        break
-                    last_mov = False
+                        if idc.get_operand_type(offset, 1) != idaapi.o_imm:
+                            blob_start = idc.next_head(offset)
+                            break
+                        else:
+                            last_mov_or_alt = True
+                    else:
+                        last_mov_or_alt = False
                 elif ins.itype == idaapi.NN_sub:
-                    if not last_mov:
+                    if not last_mov_or_alt:
                         blob_start = idc.next_head(offset)
                         break
-                    last_mov = False
-                elif ins.itype == idaapi.NN_lea:
-                    last_mov = True
+                    last_mov_or_alt = False
+                elif ins.itype in [idaapi.NN_lea, idaapi.NN_inc, idaapi.NN_add]:
+                    last_mov_or_alt = True
 
                 offset = idc.prev_head(offset, function_start)
                 blob_start = offset
@@ -154,7 +176,8 @@ class StackStack(object):
                 break
 
         if blob_start <= function_start + 64:
-            blob_start = function_start
+            if not self._has_call(function_start, blob_start):
+                blob_start = function_start
 
         self.logger.debug("BLOB Start: %x" % blob_start)
         self.logger.debug(idc.print_insn_mnem(blob_start))
@@ -187,6 +210,12 @@ class DecodeHandler(ida_kernwin.action_handler_t):
 
         self.path_type = patch_type
         self.set_bookmarks = set_bookmarks
+        self.mode = int(IdaHelpers.get_arch()/8)
+
+        # bug #1
+        # Disable patching temporarily
+        #if self.mode == 4:
+        #    self.patch = False
 
         # TODO: Move this, it inits before the file is loaded
         self.patcher = StringPatcher(patch_section, patch_section_size)
@@ -207,7 +236,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
             idc.warning("Error: Range not selected")
             return
 
-        semu = SUE(code_base=idaapi.get_imagebase(), loglevel=self.logger.level)
+        semu = SUE(code_base=idaapi.get_imagebase(), loglevel=self.logger.level, mode=self.mode)
         semu.emulate_trace(start, end)
 
     def _determine_patch_type(self, start, end):
@@ -241,7 +270,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
 
         if end:
             self.logger.debug("[*] Using ImageBase: %x" % idaapi.get_imagebase())
-            semu = SUE(code_base=idaapi.get_imagebase())
+            semu = SUE(code_base=idaapi.get_imagebase(), mode=self.mode)
             sresult = semu.deobfuscate_stack(start, end, string_length=string_length)
 
             self.logger.debug("...Complete....")
@@ -270,9 +299,9 @@ class DecodeHandler(ida_kernwin.action_handler_t):
                     if patch_type == 0:
                         self.logger.info("Skipping Patch")
                         return
-
                     if self.path_type == 1:
-                        self.patcher.patch_bytes(start, end, end, self.patcher.add_string_to_section(decoded))
+                         if not self.patcher.patch_bytes(start, end, end, self.patcher.add_string_to_section(decoded)):
+                             IdaHelpers.add_comment(start, decoded)
                     else:
                         self.logger.info("patch_type_0 - Not Implemented")
                 else:

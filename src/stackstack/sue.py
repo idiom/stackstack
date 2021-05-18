@@ -91,29 +91,28 @@ class SUE(object):
         UC_MEM_READ_AFTER: "UC_MEM_READ_AFTER"
     }
 
-    def __init__(self, code_base=0x18000000, stack_base=0xA0000000, stack_size=0x10000, sg=0x28, loglevel=logging.DEBUG,
+    def __init__(self, code_base=0x18000000, stack_base=0xA0000000, stack_size=0x10000, mode=UC_MODE_64, loglevel=logging.DEBUG,
                  trace=False):
         """
-        What properties are really useful here?
 
-        :param code_base:
-        :param stack_base:
-        :param stack_size:
-        :param sg:
-        :param debug:
-        :param trace:
+        :param code_base:       Base address to use for code
+        :param stack_base:      Base address to use for stack
+        :param stack_size:      Size of stack in bytes
+        :param mode:            UC_MODE to use (UC_MODE_32/UC_MODE_64)
+        :param loglevel:        The loglevel to use with the logger
+        :param trace:           Enable Instruction tracing
         """
         self.logger = logging.getLogger()
         self.logger.setLevel(loglevel)
 
         self.stack_data = ""
         self.code_base = code_base
-        self.sg = sg
         self.debug = debug
         self.trace = trace
         self.stack_fw = 0
         self.read_switch = False
         self.decoded_stack = ""
+        self.mode = mode
 
         # Remove?
         self.stack_grow = True
@@ -135,20 +134,14 @@ class SUE(object):
                     continue
             mu.mem_write(cur_seg.start_ea, data)
 
-    def _setup_emulator(self, code_base):
-        arch = UC_ARCH_X86
-        mode = UC_MODE_32
+    def _setup_emulator(self):
         mu = None
-
-        if idaapi.get_inf_structure().is_64bit():
-            mode = UC_MODE_64
-
-        mu = Uc(arch, mode)
+        mu = Uc(UC_ARCH_X86, self.mode)
 
         end_address = self._get_end_address()
 
         # align
-        size = end_address - code_base + (0x1000 - end_address % 0x1000)
+        size = end_address - self.code_base + (0x1000 - end_address % 0x1000)
         mu.mem_map(self.code_base, size)
 
         return mu
@@ -209,6 +202,7 @@ class SUE(object):
 
         iobj = ida_ua.insn_t()
         idaapi.decode_insn(iobj, address)
+
         if iobj.itype == idaapi.NN_add:
             self.logger.debug('Found Add Instruction')
             if iobj.Op1.type == idaapi.o_reg:
@@ -268,7 +262,7 @@ class SUE(object):
         :param timeout:
         :return:
         """
-        mu = self._setup_emulator(self.code_base)
+        mu = self._setup_emulator()
         self._map_full_file(mu)
 
         for reg in SUE.RegisterMap.values():
@@ -291,10 +285,13 @@ class SUE(object):
         mu.emu_start(start_address, end_address, timeout=timeout * UC_SECOND_SCALE)
 
         if timeout > 0:
-            rip = mu.reg_read(UC_X86_REG_RIP)
-            self.logger.debug("RIP: %x" % rip)
+            ip = UC_X86_REG_EIP
+            if self.mode == UC_MODE_64:
+                ip = UC_X86_REG_RIP
+            ip_offset = mu.reg_read(ip)
+            self.logger.debug("RIP: %x" % ip_offset)
             self.logger.debug("Expected end: %x" % end_address)
-            if end_address != mu.reg_read(UC_X86_REG_RIP):
+            if end_address != ip_offset:
                 raise EmulationTimeout()
 
         self.logger.debug("Emulation Complete..")
@@ -344,7 +341,7 @@ class SUE(object):
             result['data_length'] = len(data)
         return result
 
-    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0, mode=UC_MODE_32):
+    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0):
         """
         Primarily tested with ADVObfuscated strings. Works with similar methods which write obfuscated bytes to the
         stack, deobfucstate them, and return the result.
@@ -354,7 +351,6 @@ class SUE(object):
         :param retry:
         :param string_length:
         :param code_size:
-        :param mode:
         :return:
         """
 
@@ -503,6 +499,6 @@ class SUE(object):
                 # self.trace = True
                 self.stack_data = ""
                 self.decoded_stack = ""
-                return self.deobfuscate_stack(start_address, end_address, retry=1, mrefs=mrefs, mode=mode)
+                return self.deobfuscate_stack(start_address, end_address, retry=1)
             else:
                 self.logger.error(" [!] Fatal error emulating [%s]" % e)
