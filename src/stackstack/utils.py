@@ -22,14 +22,13 @@ class IdaHelpers(object):
     }
 
     @staticmethod
-    def add_comment(offset, comment, hexrays=False, overwrite=False):
+    def add_comment(offset, comment, hexrays=True, overwrite=True):
         """
-        Add a comment to the disassembly at the specified offset and optionally
-        in the Hexray's decompilation.
+        Add a comment to the disassembly at the specified offset and optionally in the Hexray's decompilation.
 
         :param offset:   Offset to add the comment at
         :param comment:  The comment
-        :param hexrays:  Apply to hexrasy decompile window
+        :param hexrays:  Apply to hexrays decompile window
         :param overwrite: Overwrite existing comment
         """
 

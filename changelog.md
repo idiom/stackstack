@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.03 - 2021-05-19 
+
+ - BUGFIX: Issue #2 - Changed the default behaviour to add a comment to the Hexrays view.
+ - Added check for missing config properties and add them to the config.  
+ - Minor updates. 
+ 
 ## 1.02 - 2021-05-17
 
  - Code cleanup

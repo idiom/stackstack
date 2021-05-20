@@ -29,10 +29,7 @@ class StackStack(object):
         self.arch = IdaHelpers.get_arch()
 
     def find_end(self, offset):
-        function_start = idc.get_func_attr(offset, idc.FUNCATTR_START)
         function_end = idc.get_func_attr(offset, idc.FUNCATTR_END)
-
-        self.logger.debug('Function Start: %x' % function_start)
         self.logger.debug('Function End:   %x' % function_end)
 
         found_compare = False
@@ -214,7 +211,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
 
         # bug #1
         # Disable patching temporarily
-        #if self.mode == 4:
+        # if self.mode == 4:
         #    self.patch = False
 
         # TODO: Move this, it inits before the file is loaded
@@ -436,7 +433,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
     wanted_name = "StackStack"
     wanted_hotkey = ""
 
-    _version = 1.02
+    _version = 1.03
 
     def init(self):
         try:
@@ -447,10 +444,11 @@ class StackStackPlugin(ida_idaapi.plugin_t):
             except ValueError:
                 self.logger.setLevel(logging.DEBUG)
             self.logger.info("StackStack version: %s" % StackStackPlugin._version)
-            version_check = Update.check_version(StackStackPlugin._version)
-            if version_check > 0:
-                idc.warning("StackStack version %s is now available for download." % version_check)
-            self.logger.debug(self.config)
+
+            if self.config['check_update']:
+                version_check = Update.check_version(StackStackPlugin._version)
+                if version_check > 0:
+                    idc.warning("StackStack version %s is now available for download." % version_check)
 
             self.actions = []
             self.define_actions()
@@ -472,6 +470,18 @@ class StackStackPlugin(ida_idaapi.plugin_t):
                 config_data = json.loads(inf.read())
 
         if config_data:
+            def_config = self._generate_default_configuration()
+            missing_options = False
+            for key in def_config.keys():
+                # iterate through the default config keys and add any missing config entries.
+                try:
+                    config_data[key]
+                except KeyError:
+                    config_data[key] = def_config[key]
+                    missing_options = True
+            if missing_options:
+                with open(config_path, 'w') as out:
+                    out.write(json.dumps(config_data))
             return config_data
 
         if generate_default_config:
@@ -559,33 +569,18 @@ class StackStackPlugin(ida_idaapi.plugin_t):
             ida_kernwin.register_action(action_desc)
 
     def run(self, arg):
-        """
-        TODO: Add options UI here?
-        :param arg:
-        :return:
-        """
-
-        # scf = StackConfigForm()
-        # scf.Show("StackStack Trace")
         pass
 
     def term(self):
-        """
-            Called on termination - unregister actions
-        """
         if self.actions:
             for action_desc in self.actions:
                 ida_kernwin.unregister_action(action_desc.name)
 
 
 class Menus(ida_kernwin.UI_Hooks):
-    """
 
-    """
     def finish_populating_widget_popup(self, form, popup):
-        '''
-            This hooks the UI action when focus is on the disassembly or pseudocode page
-        '''
+
         if ida_kernwin.get_widget_type(form) in [ida_kernwin.BWN_PSEUDOCODE]:
             ida_kernwin.attach_action_to_popup(form, popup, "ssp_decode_current", "StackStack/Decode/")
 

@@ -30,14 +30,14 @@ Simple Unicorn emulation plugin. I originally developed the plugin as a quick wa
 Example config file
 ```
 {
-    'loglevel': 'DEBUG',
-    'debug': True,
+    'loglevel': 'DEBUG',        
     'patch': True,
     'patch_type': 1,
     'patch_section_name': '.stackstack',
     'patch_section_size': 0x1000,
     'ext_yara_file': 'stackstack.yara',
-    'show_banner': True,
+    'bookmarks': True,
+    'rename_func': False,    
     'check_update': True    
 }
 ```
@@ -56,6 +56,11 @@ Emulates the current block or selected bytes and attempts to extract the decoded
  - Decode Function - Scan the current function and attempt to decode the found blocks.
 
 ![Example of decode options](docs/decode.png "Decode Options")
+
+### Bookmarks 
+To help navigate the binary, the plugin can create a bookmark at the location of each decoded string. If this is configured, bookmarks will be created with the prefix `SSB:` 
+
+![Example of created bookmarks](docs/bookmarks.png "Bookmarks")
 
 ### Trace 
 
