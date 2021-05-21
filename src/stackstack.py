@@ -295,6 +295,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
                     patch_type = self._determine_patch_type(start, end)
                     if patch_type == 0:
                         self.logger.info("Skipping Patch")
+                        IdaHelpers.add_comment(start, decoded)
                         return
                     if self.path_type == 1:
                          if not self.patcher.patch_bytes(start, end, end, self.patcher.add_string_to_section(decoded)):
