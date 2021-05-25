@@ -434,7 +434,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
     wanted_name = "StackStack"
     wanted_hotkey = ""
 
-    _version = 1.03
+    _version = 1.04
 
     def init(self):
         try:

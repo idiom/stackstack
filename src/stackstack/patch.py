@@ -6,11 +6,18 @@ import ida_ua
 import ida_nalt
 import ida_bytes
 import logging
+from enum import Enum
 
 from keystone import *
 from capstone import *
 
 from stackstack.utils import IdaHelpers
+
+
+class PatchTypes(Enum):
+    Unsupported = 0
+    Generic = 1
+    CallRet = 2
 
 
 class PatchException(Exception):
@@ -40,7 +47,16 @@ class StringPatcher(object):
     def generate_patch_bytes(self, code_offset, string_offset):
         """
 
-        TODO: For now this seems ok for testing, but change this to use .assemble and don't rely on Keystone.
+        Generate the patch bytes using Keystone engine.
+
+        I've done some testing with .Assemble and .AssembleLine, but it doesn't appear
+        to be fully supported - supporting a set number of instructions.
+
+        .Assemble has a bug where it will always use 32bit.
+
+        .Assemble -> ._Assemble -> .AssembleLine
+
+        In ._Assemble, the segments bitness is passed to the param use32
 
 
         :param code_offset:
@@ -56,12 +72,13 @@ class StringPatcher(object):
         cdata = idaapi.get_bytes(code_offset, (idaapi.get_item_size(code_offset)))
 
         #
-        # TODO: Fix this s- and move to use Assemble vs using keystone
+        # TODO: Fix this up, make it configurable?.
         #
         if mode > 4:
             code = "push r12;lea r12,cs:[rip+%d];mov [%s, r12; pop r12"
             ripoffset = string_offset - (code_offset + 2)
             self.logger.debug("RIP Offset: %x" % ripoffset)
+
             for instr in md.disasm(cdata, code_offset):
                 code = code % (ripoffset, instr.op_str.split(",")[0].split(" [")[1])
                 break
@@ -72,12 +89,12 @@ class StringPatcher(object):
         self.logger.debug("string offset: %x" % string_offset)
 
         try:
-            # Initialize engine in X86-32bit mode
-
+            # Initialize engine
             ks = Ks(KS_ARCH_X86, ksmode)
             bytecode, count = ks.asm(code)
             if count > 0:
                 return bytes(bytecode)
+            self.logger.error("Error no bytes returned after assembling.")
         except KsError as e:
             self.logger.error("Error assembling patch: %s" % e)
         return b''
@@ -87,7 +104,6 @@ class StringPatcher(object):
         Based on the code block figure out which var/offset is most referenced.
 
         Generally we should see a byte push to X, then a loop which iterates through the bytes using the var + an offset
-
 
         :param start:
         :param end:
@@ -237,6 +253,7 @@ class StringPatcher(object):
             self.logger.debug("String Offset: %x" % string_offset)
             idaapi.patch_bytes(patch_offset, patch_data)
             self.logger.debug("Ok...Analyzing")
+            ida_bytes.add_hidden_range(patch_offset+len(bytecode), end, '[StackStack Patch]', '', '', 0x887766)
 
             # Note: Undefine then mark the range as code..
             # undefine the bytes

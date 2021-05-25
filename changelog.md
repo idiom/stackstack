@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.04 - 2021-05-24
+ - BUGFIX: Fix issue with no comment being added 
+ - Update: Hide nop range by default 
+ - Minor updates
+
 ## 1.03 - 2021-05-19 
 
  - BUGFIX: Issue #2 - Changed the default behaviour to add a comment to the Hexrays view.
