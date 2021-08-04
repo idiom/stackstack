@@ -42,8 +42,9 @@ class IdaHelpers(object):
 
         if hexrays:
             cfunc = idaapi.decompile(offset)
+            fmap = cfunc.get_eamap()
             tl = idaapi.treeloc_t()
-            tl.ea = offset
+            tl.ea = fmap[offset][0].ea
             tl.itp = idaapi.ITP_SEMI
             cfunc.set_user_cmt(tl, comment)
             cfunc.save_user_cmts()
