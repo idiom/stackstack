@@ -39,10 +39,14 @@ class StringPatcher(object):
         self.string_cache = {}
         self.patchable_instructions = [idaapi.NN_mov, idaapi.NN_lea]
 
+
     def _init_segment(self):
         if not idaapi.get_segm_by_name(self.name):
             IdaHelpers.add_section(self.offset, self.name, bitness=IdaHelpers.get_bitness(), size=self.size, base=0)
         return idaapi.get_segm_by_name(self.name)
+
+    def patch_func_return(self, string_offset):
+        pass
 
     def generate_patch_bytes(self, code_offset, string_offset):
         """

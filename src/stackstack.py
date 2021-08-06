@@ -3,6 +3,7 @@ import ida_kernwin
 import idaapi
 import ida_ua
 import ida_diskio
+import idautils
 
 import idc
 import os
@@ -58,10 +59,9 @@ class StackStack(object):
                     except ValueError:
                         string_length = int(idc.print_operand(offset, 1)[:-1], 16) + 1
                         self.logger.debug("Setting String length: %d" % string_length)
-                        # idc.set_color(cur_addr, CIC_ITEM, 0x00c3FF)
-                        # idc.set_color(cur_addr, CIC_ITEM, 0x00C3FF)
-                        # idc.set_color(cur_addr, CIC_ITEM, 0x00C3FF)
-                        # print(hex(cur_addr), idc.generate_disasm_line(cur_addr, 0))
+            elif ins.itype == idaapi.NN_dec:
+                if idc.get_operand_type(offset, 0) == idc.o_reg:
+                    found_compare = True
             offset = idc.next_head(offset, function_end)
         return 0
 
@@ -110,11 +110,12 @@ class StackStack(object):
             start = idc.next_head(start, end)
         return False
 
-    def backtrace_start(self, offset):
+    def backtrace_start(self, offset, max_instructions=1024):
         """
         From the current offset - backtrace and find the best instruction to start emulation.
 
         :param offset:
+        :param max_instructions: The maximum number of instructions to backtrace
         :return:
         """
         function_start = idc.get_func_attr(offset, idc.FUNCATTR_START)
@@ -130,8 +131,13 @@ class StackStack(object):
 
             if not self._has_call(function_start, offset):
                 return function_start
-
+        icount = 0
         while offset >= function_start:
+            icount += 1
+
+            if icount > max_instructions:
+                return 0
+
             ins = ida_ua.insn_t()
 
             idaapi.decode_insn(ins, offset)
@@ -161,16 +167,18 @@ class StackStack(object):
                 elif ins.itype in [idaapi.NN_lea, idaapi.NN_inc, idaapi.NN_add]:
                     last_mov_or_alt = True
 
-                offset = idc.prev_head(offset, function_start)
                 blob_start = offset
 
                 if offset <= function_start:
                     self.logger.debug("Error back-tracing ADVBLOB...Using function start")
                     blob_start = function_start
                     break
+
             else:
                 blob_start = idc.next_head(offset)
                 break
+
+            offset = idc.prev_head(offset)
 
         if blob_start <= function_start + 64:
             if not self._has_call(function_start, blob_start):
@@ -180,16 +188,7 @@ class StackStack(object):
         self.logger.debug(idc.print_insn_mnem(blob_start))
         return blob_start
 
-    def process_matches(self, matches, function_offset=0):
-        """
 
-        :param matches:
-        :return:
-        """
-
-        # Disable this - this needs to be updated
-        idc.warning("Not Implemented")
-        return
 
 
 class DecodeHandler(ida_kernwin.action_handler_t):
@@ -236,9 +235,13 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         semu = SUE(code_base=idaapi.get_imagebase(), loglevel=self.logger.level, mode=self.mode)
         semu.emulate_trace(start, end)
 
-    def _determine_patch_type(self, start, end):
+
+    def _identify_impl_type(self, start, end):
         """
-        Determine if the code block should be patched.
+        Identify the implementation type.
+
+        0 - func - string is decrypted in a call to a function. Offset is returned in eax
+        1 - inline1 -
 
         TODO: This should be expanded to better detect different implementations and return which patch type to use.
 
@@ -266,9 +269,14 @@ class DecodeHandler(ida_kernwin.action_handler_t):
             return
 
         if end:
+
             self.logger.debug("[*] Using ImageBase: %x" % idaapi.get_imagebase())
+
+            impl_type = self._identify_impl_type(start, end)
+
             semu = SUE(code_base=idaapi.get_imagebase(), mode=self.mode)
-            sresult = semu.deobfuscate_stack(start, end, string_length=string_length)
+
+            sresult = semu.deobfuscate_stack(start, end, string_length=string_length, impl_type=impl_type)
 
             self.logger.debug("...Complete....")
 
@@ -292,18 +300,75 @@ class DecodeHandler(ida_kernwin.action_handler_t):
                     IdaHelpers.add_bookmark(start, decoded)
 
                 if self.patch:
-                    patch_type = self._determine_patch_type(start, end)
+                    patch_type = self._identify_impl_type(start, end)
+
+                    # Decode happens in a function
+                    # set eax to the offset of the string
                     if patch_type == 0:
                         self.logger.info("Skipping Patch")
                         IdaHelpers.add_comment(start, decoded)
-                        return
-                    if self.path_type == 1:
-                         if not self.patcher.patch_bytes(start, end, end, self.patcher.add_string_to_section(decoded)):
-                             IdaHelpers.add_comment(start, decoded)
+                        return decoded
+                    elif self.path_type == 1:
+                        if not self.patcher.patch_bytes(start, end, end, self.patcher.add_string_to_section(decoded)):
+                            IdaHelpers.add_comment(start, decoded)
                     else:
                         self.logger.info("patch_type_0 - Not Implemented")
                 else:
                     IdaHelpers.add_comment(start, decoded)
+                return decoded
+
+
+    def process_matches(self, matches, function_start):
+        """
+
+        :param matches:
+        :return:
+        """
+
+        if not matches:
+            return
+
+        stacks = StackStack()
+
+        last_start = 0
+        last_end = 0
+        decoded_strings = []
+        deocded_offsets = []
+        for match in matches:
+            try:
+                match_offset = function_start + match
+                self.logger.debug("Processing match offset: %x" % match_offset)
+                block_start = stacks.backtrace_start(match_offset)
+                if not block_start:
+                    self.logger.error("Could not find block start for %x .. skipping" % match_offset)
+                    continue
+
+                block_end = stacks.find_end(block_start)
+                if not block_end:
+                    self.logger.error("Could not find block end for %x .. skipping" % match_offset)
+                    continue
+
+                if last_end == 0 == last_start:
+                    last_end = block_end
+                    last_start = block_start
+                else:
+                    if last_start < match_offset < last_end:
+                        self.logger.debug("Skipping offset [%x]" % match_offset)
+                        continue
+
+                string_length = stacks.get_string_length(block_start)
+                self.logger.debug("Processing: start: %x, end: %x, string_length: %d" % (block_start, block_end, string_length))
+                decoded = self._process(block_start, block_end, string_length=string_length)
+                if decoded:
+                    if not block_start in deocded_offsets:
+                        decoded_strings.append((block_start, decoded))
+                        deocded_offsets.append(block_start)
+
+                self.logger.debug("Using start of: %x" % block_start)
+            except Exception as ex:
+                self.logger.error("Error processing block: %s" % ex)
+
+        return decoded_strings
 
     def update(self, ctx):
         """
@@ -320,6 +385,8 @@ class DecodeHandler(ida_kernwin.action_handler_t):
             self.decode_function()
         elif ctx.action == 'ssp_trace_selected':
             self.trace_bytes()
+        elif ctx.action == 'ssp_decode_all':
+            self.decode_all()
         else:
             self.logger.debug(ctx.cur_func)
             self.logger.debug("Not Supported")
@@ -345,14 +412,52 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         if refs:
             self.logger.debug("Found [%d] Obfuscated Strings" % len(refs))
 
-            advs.process_matches(refs, function_start)
+            decoded_strings = self.process_matches(refs, function_start)
+            if decoded_strings:
+                # TODO: Add this to a UI Pop-up
+                print("--- Decoded Function Strings ---")
+                for o, s in decoded_strings:
+                    print(" %x: %s" % (o, s))
+
         else:
             self.logger.debug("No code blocks found..")
+
+    def decode_all(self):
+        # Disable patching
+        patchorg = self.patch
+        if patchorg:
+            self.logger.info("Disabling Patching...")
+
+        self.patch = False
+        try:
+            ss = StackStack()
+            decoded_strings = []
+            for func_entry in idautils.Functions():
+                if idc.get_func_attr(func_entry, idc.FUNCATTR_FLAGS) & idc.FUNC_LIB:
+                    self.logger.debug("Skipping lib function %s" % idc.get_func_name(func_entry))
+                    continue
+
+                fdata = idc.get_bytes(func_entry, idc.get_func_attr(func_entry, idc.FUNCATTR_END) - func_entry)
+                refs = self.scanner.scan_function(fdata)
+                if refs:
+                    self.logger.debug("Found [%d] Obfuscated Strings" % len(refs))
+                    decoded_strings.extend(self.process_matches(refs, func_entry))
+
+            if decoded_strings:
+                # TODO: Add this to a UI Pop-up
+                print("--- Decoded Function Strings ---")
+                for o, s in decoded_strings:
+                    print(" %x: %s" % (o, s))
+        except Exception as ex:
+            self.logger.error("Error processing file: %s" % ex)
+
+        self.patch = patchorg
 
     def decode_current(self):
         stacks = StackStack()
 
         offset = idaapi.get_item_head(idc.here())
+        self.logger.debug("Starting scan at offset: %x" % offset)
 
         # TODO: Make this a configuration option to either use back trace or blocks
         start = stacks.backtrace_start(offset)
@@ -425,6 +530,10 @@ class ScanHandler(ida_kernwin.action_handler_t):
         pass
 
 
+class StackStackConfig(object):
+    pass
+
+
 class StackStackPlugin(ida_idaapi.plugin_t):
 
     flags = ida_idaapi.PLUGIN_KEEP
@@ -434,7 +543,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
     wanted_name = "StackStack"
     wanted_hotkey = ""
 
-    _version = 1.04
+    _version = 1.05
 
     def init(self):
         try:
@@ -493,7 +602,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
 
     def _generate_default_configuration(self):
         return {
-            'loglevel': 'DEBUG',
+            'loglevel': 'INFO',
             'patch': True,
             'patch_type': 1,
             'patch_section_name': '.stackstack',
@@ -501,7 +610,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
             'ext_yara_file': 'stackstack.yara',
             'bookmarks': True,
             'rename_func': False,
-            'check_update': True
+            'check_update': False
         }
 
     def _get_scan_actions(self):
@@ -570,6 +679,9 @@ class StackStackPlugin(ida_idaapi.plugin_t):
             ida_kernwin.register_action(action_desc)
 
     def run(self, arg):
+        print('-------------------------------------')
+        print('running\n\n\n\n\n\n\n\n\n')
+        print('-------------------------------------')
         pass
 
     def term(self):

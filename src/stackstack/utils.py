@@ -2,7 +2,7 @@ import idaapi
 import idc
 import idautils
 import http.client
-
+import ida_hexrays
 
 class IdaHelpers(object):
 
@@ -41,14 +41,19 @@ class IdaHelpers(object):
         idc.set_cmt(offset, 'Decoded: %s' % comment, 0)
 
         if hexrays:
-            cfunc = idaapi.decompile(offset)
-            fmap = cfunc.get_eamap()
-            tl = idaapi.treeloc_t()
-            tl.ea = fmap[offset][0].ea
-            tl.itp = idaapi.ITP_SEMI
-            cfunc.set_user_cmt(tl, comment)
-            cfunc.save_user_cmts()
-            cfunc.refresh_func_ctext()
+            try:
+                cfunc = idaapi.decompile(offset)
+                fmap = cfunc.get_eamap()
+                tl = idaapi.treeloc_t()
+                tl.ea = fmap[offset][0].ea
+                tl.itp = idaapi.ITP_SEMI
+                cfunc.set_user_cmt(tl, comment)
+                cfunc.save_user_cmts()
+                cfunc.refresh_func_ctext()
+            except KeyError:
+                pass
+            except ida_hexrays.DecompilationFailure:
+                pass
 
     @staticmethod
     def add_bookmark(offset, comment, check_duplicate=True):
@@ -122,6 +127,12 @@ class Update(object):
 
     @staticmethod
     def check_version(version):
+        """
+        Check if a new version of the plugin is available.
+
+        :param version:
+        :return:
+        """
         try:
             req = http.client.HTTPSConnection("raw.githubusercontent.com")
             req.request("GET", "/idiom/stackstack/main/version")

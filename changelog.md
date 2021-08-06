@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.05 - 2021-07-27
+ - BUGFIX: Fix issue with detecting encoded blobs could cause Ida to become unresponsive
+ - BUGFIX: Fix issues with decode current function.
+ - BUGFIX: Fix issue with orphaned comments in decompile window.
+ - BUGFIX: Fix issue with routines that operate directly on memory offsets and do not trigger a memory read.
+ - BUGFIX: Fix issue with unicode strings of unknown length.
+ - Improve scanning for encrypted strings in 32bit binaries
+ - Improve emulation    
+ - Improve auto-detect of blocks
+ - Add base to use code blocks to quickly detect code to emulate
+ - General code cleanup and optimizations 
+ - Check for update disabled by default 
+
 ## 1.04 - 2021-05-24
  - BUGFIX: Fix issue with no comment being added 
  - Update: Hide nop range by default 

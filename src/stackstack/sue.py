@@ -91,16 +91,25 @@ class SUE(object):
         UC_MEM_READ_AFTER: "UC_MEM_READ_AFTER"
     }
 
-    def __init__(self, code_base=0x18000000, stack_base=0xA0000000, stack_size=0x10000, mode=UC_MODE_64, loglevel=logging.DEBUG,
+    def __init__(self,
+                 code_base=0x18000000,
+                 stack_base=0xA0000000,
+                 stack_size=0x10000,
+                 mode=UC_MODE_64,
+                 loglevel=logging.DEBUG,
+                 handle_mem_read_errors=True,
                  trace=False):
         """
 
-        :param code_base:       Base address to use for code
-        :param stack_base:      Base address to use for stack
-        :param stack_size:      Size of stack in bytes
-        :param mode:            UC_MODE to use (UC_MODE_32/UC_MODE_64)
-        :param loglevel:        The loglevel to use with the logger
-        :param trace:           Enable Instruction tracing
+
+
+        :param code_base:               Base address to use for code
+        :param stack_base:              Base address to use for stack
+        :param stack_size:              Size of stack in bytes
+        :param mode:                    UC_MODE to use (UC_MODE_32/UC_MODE_64)
+        :param loglevel:                The loglevel to use with the logger
+        :param handle_mem_read_errors:  Attempt to skip mem read errors
+        :param trace:                   Enable Instruction tracing
         """
         self.logger = logging.getLogger()
         self.logger.setLevel(loglevel)
@@ -109,19 +118,18 @@ class SUE(object):
         self.code_base = code_base
         self.debug = debug
         self.trace = trace
-        self.stack_fw = 0
         self.read_switch = False
         self.decoded_stack = ""
         self.mode = mode
-
-        # Remove?
-        self.stack_grow = True
 
         self.write_switch = False
         self.stack_base = stack_base
         self.stack_size = stack_size
         self.last_write_address = 0
         self.first_write_address = 0
+        self.handle_mem_read_errors = handle_mem_read_errors
+
+        self.write_address_list = []
 
     def _map_full_file(self, mu):
         for seg in idautils.Segments():
@@ -157,15 +165,19 @@ class SUE(object):
     def hook_mem_access(self, uc, access, address, size, value, user_data):
         """
 
-
         """
         if access == UC_MEM_WRITE:
             if self.trace:
                 self.logger.debug("Memory Write at 0x%x, data size = %u, data value = 0x%x" % (address, size, value))
-
+            # TODO: clean this up
+            self.write_switch = True
             try:
-                # First Write Address
-                self.write_switch = True
+                if address not in self.write_address_list:
+                    self.write_address_list.append(address)
+                else:
+                    if not self.first_write_address:
+                        self.first_write_address = address
+                        self.write_address_list.append(address)
 
                 if size == 1:
                     if self.read_switch:
@@ -179,16 +191,14 @@ class SUE(object):
 
         else:
             if size == 1:
-                if self.stack_fw == 0:
+                if self.first_write_address == 0:
                     if self.write_switch:
-                        self.stack_fw = address
-
-                if self.stack_fw > 0:
+                        self.first_write_address = address
+                if self.first_write_address > 0:
                     self.read_switch = True
 
             if self.trace:
-                pass
-                # self._debug_log("Memory READ at 0x%x, data size = %u" % (address, size))
+                self.logger.debug("Memory READ at 0x%x, data size = %u" % (address, size))
 
     def hook_code(self, mu, address, size, user_data):
         if self.trace:
@@ -235,8 +245,8 @@ class SUE(object):
                     reg_data = mu.reg_read(self.RegisterMap[idc.print_operand(address, x)])
                     comment += "%s: 0x%x" % (idc.print_operand(address, x), reg_data)
                 except KeyError:
-
                     pass
+
         if comment:
             idc.set_cmt(address, comment, 0)
         self.logger.debug(comment)
@@ -251,6 +261,17 @@ class SUE(object):
             self.logger.debug(
                 "Invalid %s of 0x%x at 0x%X, data size = %u" % (SUE.MemoryAccessLookup[access], address, rip, size))
 
+            if self.handle_mem_read_errors:
+                self.logger.debug("Read error..attempting to handle")
+                if address == 0:
+                    # Trying to read from null
+                    # for now return False
+                    return False
+                if access == UC_MEM_READ_UNMAPPED:
+                    # Attempt to allocate memory at the specified address
+                    mem_size = size + (1024 - size % 1024)
+                    uc.mem_map(address, mem_size)
+                    return True
         return False
 
     def emulate(self, start_address, end_address, hooks, timeout=1):
@@ -278,7 +299,6 @@ class SUE(object):
             for hook in hooks:
                 mu.hook_add(hook[0], hook[1])
 
-        # self._debug_log("Code Length %d" % len(byte_stream))
         self.logger.debug("Starting Emulation")
 
         # emulate code
@@ -341,7 +361,21 @@ class SUE(object):
             result['data_length'] = len(data)
         return result
 
-    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0):
+    def _decode_data(self, indata):
+
+        if indata[1] == 0:
+            try:
+                return indata.decode("utf-16")
+            except UnicodeDecodeError:
+                # probably have bad data
+                # just swallow this for now
+                # Which is probably a bad idea
+                self.logger.debug("Error decoding as unicode")
+                pass
+        else:
+            return indata.decode("utf-8")
+
+    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0, impl_type=-1):
         """
         Primarily tested with ADVObfuscated strings. Works with similar methods which write obfuscated bytes to the
         stack, deobfucstate them, and return the result.
@@ -350,7 +384,7 @@ class SUE(object):
         :param end_address:
         :param retry:
         :param string_length:
-        :param code_size:
+        :param impl_type:
         :return:
         """
 
@@ -390,7 +424,30 @@ class SUE(object):
             stack_data = b""
 
             self.logger.debug("Raw: %s" % self.stack_data)
-            self.logger.debug("Lazy Stack: %s" % self.decoded_stack)
+            self.logger.debug("Lazy Stack: %s\n\n" % self.decoded_stack)
+
+            self.logger.debug("impl_type: %s" % impl_type)
+            if impl_type == 0:
+                self.logger.debug("String length: %d" % string_length)
+                self.logger.debug("String offset: %x" % mu.reg_read(self.RegisterMap['eax']))
+                if string_length > 0:
+                    stack_data = mu.mem_read(mu.reg_read(self.RegisterMap['eax']), string_length)
+                else:
+                    stack_chars = []
+                    offset = mu.reg_read(self.RegisterMap['eax'])
+                    while offset < self.stack_base + self.stack_size:
+                        c = mu.mem_read(offset, 2)
+                        if c == b'\x00\x00':
+                            break
+                        stack_chars.append(c)
+                        offset += 2
+                    stack_data = b''.join(c for c in stack_chars)
+
+                if stack_data:
+                    stack_data = self._decode_data(stack_data)
+                    result['data'] = stack_data
+                    result['data_length'] = len(stack_data)
+                    return result
 
             if self.decoded_stack:
                 ds = self.decoded_stack.replace("\x00", "")
@@ -398,36 +455,21 @@ class SUE(object):
                 result['data_length'] = len(ds)
                 return result
 
-            # Check if a string length is defined.
-            if string_length == 0:
-                pass
-                # TODO: This would never be set..update this
-                # if mrefs:
-                #     result = self._get_func_decoded(mu, mode)
-                #     if result:
-                #         return result
-
             self.logger.debug("Attempting to auto extract data...")
 
-            # Attempt to automatically extract the written string from the stack.
+            # Attempt to extract the written string from the stack.
             #
             self.stack_offset = self.stack_base + 0x1000
 
             cursor = self.first_write_address
+
+            if not self.read_switch:
+                string_length = 0
+
             self.logger.debug('Cursor: %x' % cursor)
             self.logger.debug('Stack Offset: %x' % self.stack_offset)
             self.logger.debug('Last Write Address:: %x' % self.last_write_address)
-
-            # if cursor < self.last_write_address:
-            #    test = mu.mem_read(cursor, self.last_write_address - cursor)
-            #    print(test)
-
             self.logger.debug('String Length: %s' % string_length)
-
-            if cursor == 0:
-                self.logger.error("No write detected!")
-                self.logger.error("Extraction failed!")
-                return {}
 
             if string_length > 0:
                 self.logger.debug("Reading [%d] bytes from memory" % string_length)
@@ -436,20 +478,23 @@ class SUE(object):
                 result['data'] = test.decode("utf-8").replace("\x00", "")
             else:
                 counter = 0
+                last_char_null = False
                 while cursor < self.stack_base + self.stack_size:
-                    if counter > 512:
+                    if counter > 1000:
                         break
                     # counter += 1
                     data = mu.mem_read(cursor, 1)
-                    if self.stack_grow:
-                        cursor += 1
-                    else:
-                        cursor -= 1
+                    cursor += 1
+
                     if data == b"\x00":
-                        if len(stack_data) > 2:
-                            if not stack_data[1] == "\x00":
-                                break
+                        if last_char_null:
+                            break
+                        last_char_null = True
+                        counter += 1
+                        continue
+                    last_char_null = False
                     stack_data = stack_data + data
+                    counter += 1
 
                 self.logger.debug("Extracted:  %s" % stack_data)
                 self.logger.debug(type(stack_data))
@@ -462,6 +507,7 @@ class SUE(object):
                             # probably have bad data
                             # just swallow this for now
                             # Which is probably a bad idea
+                            self.logger.debug("Error decoding as unicode")
                             pass
                     else:
                         stack_data = stack_data.decode("utf-8")
@@ -473,19 +519,11 @@ class SUE(object):
                     result['data'] = ''
                     result['data_length'] = 0
 
-                # if all(c in string.printable for c in self.decoded_stack.replace("\x00", "")):
-                # if all(c in string.printable for c in tmp.replace(b"\x00", "")):
-                #    result['data'] = tmp.decode("utf-8")
-                #    result['data_length'] = len(tmp.decode("utf-8"))
-                # else:
-                #    self._debug_log("Error extacted unprintable bytes %s" % tmp)
-
             try:
                 self.logger.debug('Extracted Data: %s' % result['data'])
                 result['data_length'] = len(result['data'])
             except KeyError as ke:
                 self.logger.error('Error processing data: %s' % ke)
-                pass
 
             return result
 
