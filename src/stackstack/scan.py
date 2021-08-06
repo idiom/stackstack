@@ -31,8 +31,13 @@ class YaraScanner(ScanEngineBase):
         ]
 
         x86_rules = [
-            """rule scan_a{strings: $ = {c6 45 ?? ?? c6 45 ?? ?? c6 45 ?? ?? c6 45} condition: all of them}""",
-            """rule scan_b{strings: $ = {8b ?? ?? ff ff ff 34 ?? 88 ?? ?? ff ff ff 8b ?? ?? ff ff ff} condition: all of them}"""
+            """rule scan_a{strings: $ = {c6 4? [2-3] c6 4? [2-3] c6 4? [2-3] c6 4?} condition: all of them}""",
+            """rule scan_b{strings: $ = {c6 4? [2-3] c6 4? [2-3] c6 4? [2-3] c6 4?} condition: all of them}""",
+            """rule scan_c{strings: $ = {8b ?? ?? ff ff ff 34 ?? 88 ?? ?? ff ff ff 8b ?? ?? ff ff ff} condition: all of them}""",
+            """rule scan_d{strings: $ = {c7 00 [4] c7 40 [5] c7 40} condition: all of them}""",
+            """rule scan_e{strings: $ = {c6 85 [5] c6 85 [5] c6 85} condition: all of them}"""
+            # C6 85 D4 FD FF FF 43
+            """"""
         ]
 
         self.raw_rules = []
@@ -104,7 +109,7 @@ class YaraScanner(ScanEngineBase):
                             results[func_name] = 1
         return results
 
-    def scan_function(self, data):
+    def scan_function(self, data, match_overlay_range=64):
         """
         Scan the current function for obfuscated blobs
 
@@ -113,6 +118,7 @@ class YaraScanner(ScanEngineBase):
         """
         values = []
         for rule in self.rules:
+            last_match_offset = 0
             matches = rule.match(data=data)
 
             if not matches:
@@ -120,6 +126,13 @@ class YaraScanner(ScanEngineBase):
 
             for rule_match in matches:
                 for match in rule_match.strings:
+                    if last_match_offset > match[0] > last_match_offset - match_overlay_range:
+                        continue
+                    elif last_match_offset < match[0] < last_match_offset + match_overlay_range:
+                        continue
+
                     self.logger.debug("Match at %x" % match[0])
+                    last_match_offset = match[0]
                     values.append(match[0])
         return values
+
