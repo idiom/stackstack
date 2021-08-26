@@ -122,6 +122,17 @@ class StackStack(object):
         blob_start = 0
         last_mov_or_alt = True
 
+        trace_instruction_types = [idaapi.NN_mov,
+                                   idaapi.NN_sub,
+                                   idaapi.NN_xor,
+                                   idaapi.NN_lea,
+                                   idaapi.NN_add,
+                                   idaapi.NN_inc,
+                                   idaapi.NN_movupd,
+                                   idaapi.NN_movups,
+                                   idaapi.NN_movaps,
+                                   idaapi.NN_movapd,]
+
         # Back trace
         if offset <= function_start + 64:
             """
@@ -143,13 +154,9 @@ class StackStack(object):
             idaapi.decode_insn(ins, offset)
             self.logger.debug("0x%x %s" % (offset, idc.generate_disasm_line(idc.prev_head(offset), 0)))
 
-            if ins.itype in [idaapi.NN_mov, idaapi.NN_sub, idaapi.NN_xor, idaapi.NN_lea, idaapi.NN_add, idaapi.NN_inc]:
-                if ins.itype == idaapi.NN_mov:
+            if ins.itype in trace_instruction_types:
+                if ins.itype in [idaapi.NN_mov]:
                     last_mov_or_alt = True
-                    if idc.get_operand_type(offset, 0) in [idaapi.o_mem, idaapi.o_reg] and \
-                            idc.get_operand_type(offset, 1) in [idaapi.o_mem, idaapi.o_reg]:
-                        blob_start = idc.next_head(offset)
-                        break
                 elif ins.itype == idaapi.NN_xor:
                     if idc.print_operand(offset, 0) != idc.print_operand(offset, 1):
                         if idc.get_operand_type(offset, 1) != idaapi.o_imm:
@@ -187,8 +194,6 @@ class StackStack(object):
         self.logger.debug("BLOB Start: %x" % blob_start)
         self.logger.debug(idc.print_insn_mnem(blob_start))
         return blob_start
-
-
 
 
 class DecodeHandler(ida_kernwin.action_handler_t):
@@ -543,7 +548,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
     wanted_name = "StackStack"
     wanted_hotkey = ""
 
-    _version = 1.05
+    _version = 1.06
 
     def init(self):
         try:

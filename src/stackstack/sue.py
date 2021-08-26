@@ -98,7 +98,7 @@ class SUE(object):
                  mode=UC_MODE_64,
                  loglevel=logging.DEBUG,
                  handle_mem_read_errors=True,
-                 trace=False):
+                 trace=True):
         """
 
 
@@ -291,8 +291,9 @@ class SUE(object):
 
         # Setup stack
         mu.mem_map(self.stack_base, self.stack_size)
-        mu.reg_write(UC_X86_REG_ESP, self.stack_base + 0x1000)
-        mu.reg_write(UC_X86_REG_EBP, self.stack_base + 0x1000)
+        stack_offset = int(self.stack_base + (self.stack_size / 2))
+        mu.reg_write(UC_X86_REG_ESP, stack_offset)
+        mu.reg_write(UC_X86_REG_EBP, stack_offset)
 
         # Add hooks
         if hooks:

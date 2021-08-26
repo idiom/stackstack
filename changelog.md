@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.06 - 2021-08-25
+ - BUGFIX: Fix issue with the emulator stack setup
+ - Improve backtracing 32bit code blocks 
+ - Minor updates
+ 
 ## 1.05 - 2021-07-27
  - BUGFIX: Fix issue with detecting encoded blobs could cause Ida to become unresponsive
  - BUGFIX: Fix issues with decode current function.

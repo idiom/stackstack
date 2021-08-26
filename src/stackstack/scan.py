@@ -36,7 +36,8 @@ class YaraScanner(ScanEngineBase):
             """rule scan_c{strings: $ = {8b ?? ?? ff ff ff 34 ?? 88 ?? ?? ff ff ff 8b ?? ?? ff ff ff} condition: all of them}""",
             """rule scan_d{strings: $ = {c7 00 [4] c7 40 [5] c7 40} condition: all of them}""",
             """rule scan_e{strings: $ = {c6 85 [5] c6 85 [5] c6 85} condition: all of them}"""
-            # C6 85 D4 FD FF FF 43
+            """rule scan_f{strings: $ = {0f 28 05 [4] 0f 11 [5] 0f} condition: all of them}"""
+                    
             """"""
         ]
 
