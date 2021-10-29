@@ -8,7 +8,7 @@ import ida_bytes
 import logging
 from enum import Enum
 
-from keystone import *
+from keystone.keystone import *
 from capstone import *
 
 from stackstack.utils import IdaHelpers
