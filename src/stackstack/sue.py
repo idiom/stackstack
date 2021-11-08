@@ -111,7 +111,7 @@ class SUE(object):
         :param handle_mem_read_errors:  Attempt to skip mem read errors
         :param trace:                   Enable Instruction tracing
         """
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger('stackstack')
         self.logger.setLevel(loglevel)
 
         self.stack_data = ""

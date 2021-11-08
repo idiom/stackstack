@@ -17,17 +17,31 @@ from stackstack.patch import StringPatcher
 
 BAD = [0xffffffff, 0xffffffffffffffff]
 
-logging.basicConfig(format='stackstack:%(levelname)s:%(message)s', level=logging.DEBUG)
-
 
 class StackStack(object):
 
     def __init__(self, loglevel=logging.DEBUG):
-        self.logger = logging.getLogger()
-        self.logger.setLevel(loglevel)
+
+        self.logger = self._init_logger(loglevel)
 
         self.last_bookmark = 0
         self.arch = IdaHelpers.get_arch()
+
+    def _init_logger(self, loglevel, name='stackstack'):
+        """
+        Initialize Logger
+
+        :param loglevel: Log Level to use
+        :param name: Log name
+        :return:
+        """
+        logger = logging.getLogger(name)
+        logger.setLevel(loglevel)
+        log_stream = logging.StreamHandler()
+        formatter = logging.Formatter('stackstack:%(levelname)s:%(message)s')
+        log_stream.setFormatter(formatter)
+        logger.addHandler(log_stream)
+        return logger
 
     def find_end(self, offset):
         function_end = idc.get_func_attr(offset, idc.FUNCATTR_END)
@@ -207,7 +221,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         ida_kernwin.action_handler_t.__init__(self)
         self.scanner = YaraScanner()
         self.patch = patch
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger('stackstack')
 
         self.path_type = patch_type
         self.set_bookmarks = set_bookmarks
@@ -503,7 +517,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
 class ScanHandler(ida_kernwin.action_handler_t):
 
     def __init__(self, loglevel=logging.DEBUG):
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger('stackstack')
         self.logger.setLevel(loglevel)
         ida_kernwin.action_handler_t.__init__(self)
         self.scanner = YaraScanner()
@@ -552,7 +566,7 @@ class StackStackPlugin(ida_idaapi.plugin_t):
 
     def init(self):
         try:
-            self.logger = logging.getLogger()
+            self.logger = logging.getLogger('stackstack')
             self.config = self.load_configuration()
             try:
                 self.logger.setLevel(logging._checkLevel(self.config['loglevel'].upper()))

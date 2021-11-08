@@ -29,7 +29,7 @@ class StringPatcher(object):
     def __init__(self, name='.stackstack', size=0x1000, offset=0, decompile=True, loglevel=logging.DEBUG):
         self.name = name
 
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger('stackstack')
         self.logger.setLevel(loglevel)
         self.decompile = decompile
 

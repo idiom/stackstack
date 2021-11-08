@@ -16,7 +16,7 @@ class YaraScanner(ScanEngineBase):
     """
 
     def __init__(self, rule_file=None, rules=[], loglevel=logging.DEBUG):
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger('stackstack')
         self.logger.setLevel(loglevel)
 
         if rule_file:
