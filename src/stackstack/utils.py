@@ -21,6 +21,20 @@ class IdaHelpers(object):
         idaapi.saRel2048Bytes: 2048,
     }
 
+    @classmethod
+    def has_decompiler(cls):
+        """
+        Check if the current instance has the decompiler.
+
+        :return: True/False if the decompiler is available.
+        """
+        try:
+            if not ida_hexrays.get_hexrays_version():
+                return False
+            return True
+        except Exception:
+            return False
+
     @staticmethod
     def add_comment(offset, comment, hexrays=True, overwrite=True):
         """
@@ -31,7 +45,6 @@ class IdaHelpers(object):
         :param hexrays:  Apply to hexrays decompile window
         :param overwrite: Overwrite existing comment
         """
-
         if not overwrite:
             existing_comment = idc.GetCommentEx(offset, 0)
             if existing_comment:
@@ -42,7 +55,7 @@ class IdaHelpers(object):
 
         if hexrays:
             try:
-                cfunc = idaapi.decompile(offset)
+                cfunc = ida_hexrays.decompile(offset)
                 fmap = cfunc.get_eamap()
                 tl = idaapi.treeloc_t()
                 tl.ea = fmap[offset][0].ea
@@ -145,3 +158,9 @@ class Update(object):
         except Exception as ex:
             print("Error checking version: %s" % ex)
             return 0
+
+
+class UIWrapper(object):
+
+    def __init__(self):
+        pass

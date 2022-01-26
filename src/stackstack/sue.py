@@ -17,11 +17,7 @@ class IdaUnicornMap(Enum):
     pass
 
 
-class SUE(object):
-    """
-    An emulator named SUE (Simple Unicorn Emulator)
-
-    """
+class BaseEmulator(object):
 
     RegisterMap = {
         "ecx": UC_X86_REG_ECX,
@@ -96,12 +92,8 @@ class SUE(object):
                  stack_base=0xA0000000,
                  stack_size=0x10000,
                  mode=UC_MODE_64,
-                 loglevel=logging.DEBUG,
-                 handle_mem_read_errors=True,
-                 trace=True):
+                 logger=None):
         """
-
-
 
         :param code_base:               Base address to use for code
         :param stack_base:              Base address to use for stack
@@ -111,27 +103,19 @@ class SUE(object):
         :param handle_mem_read_errors:  Attempt to skip mem read errors
         :param trace:                   Enable Instruction tracing
         """
-        self.logger = logging.getLogger('stackstack')
-        self.logger.setLevel(loglevel)
 
-        self.stack_data = ""
         self.code_base = code_base
-        self.debug = debug
-        self.trace = trace
-        self.read_switch = False
-        self.decoded_stack = ""
-        self.mode = mode
-
-        self.write_switch = False
         self.stack_base = stack_base
         self.stack_size = stack_size
-        self.last_write_address = 0
-        self.first_write_address = 0
-        self.handle_mem_read_errors = handle_mem_read_errors
+        self.mode = mode
 
-        self.write_address_list = []
+        self.logger = logger
 
-    def _map_full_file(self, mu):
+        if not logger:
+            self.logger = logging.getLogger('stackstack')
+            self.logger.setLevel(logging.DEBUG)
+
+    def map_full_file(self, mu):
         for seg in idautils.Segments():
             data = None
             cur_seg = idaapi.getseg(seg)
@@ -142,7 +126,7 @@ class SUE(object):
                     continue
             mu.mem_write(cur_seg.start_ea, data)
 
-    def _setup_emulator(self):
+    def setup_emulator(self):
         mu = None
         mu = Uc(UC_ARCH_X86, self.mode)
 
@@ -161,6 +145,96 @@ class SUE(object):
             if idaapi.getseg(segment).end_ea > end_address:
                 end_address = idaapi.getseg(segment).end_ea
         return end_address
+
+    def emulate(self, start_address, end_address, hooks, timeout=1):
+        """
+
+        :param start_address:
+        :param end_address:
+        :param hooks:
+        :param timeout:
+        :return:
+        """
+        mu = self.setup_emulator()
+        self.map_full_file(mu)
+
+        for reg in SUE.RegisterMap.values():
+            mu.reg_write(reg, 0)
+
+        # Setup stack
+        mu.mem_map(self.stack_base, self.stack_size)
+        stack_offset = int(self.stack_base + (self.stack_size / 2))
+        mu.reg_write(UC_X86_REG_ESP, stack_offset)
+        mu.reg_write(UC_X86_REG_EBP, stack_offset)
+
+        # Add hooks
+        if hooks:
+            for hook in hooks:
+                mu.hook_add(hook[0], hook[1])
+
+        self.logger.debug("Starting Emulation")
+
+        # emulate code
+        mu.emu_start(start_address, end_address, timeout=timeout * UC_SECOND_SCALE)
+
+        if timeout > 0:
+            ip = UC_X86_REG_EIP
+            if self.mode == UC_MODE_64:
+                ip = UC_X86_REG_RIP
+            ip_offset = mu.reg_read(ip)
+            self.logger.debug("RIP: %x" % ip_offset)
+            self.logger.debug("Expected end: %x" % end_address)
+            if end_address != ip_offset:
+                raise EmulationTimeout()
+
+        self.logger.debug("Emulation Complete..")
+
+        return mu
+
+
+class SUE(BaseEmulator):
+    """
+    An emulator named SUE (Simple Unicorn Emulator)
+
+    """
+
+    def __init__(self,
+                 code_base=0x18000000,
+                 stack_base=0xA0000000,
+                 stack_size=0x10000,
+                 mode=UC_MODE_64,
+                 loglevel=logging.DEBUG,
+                 handle_mem_read_errors=True,
+                 trace=True,
+                 logger=None):
+
+        """
+
+
+        :param code_base:               Base address to use for code
+        :param stack_base:              Base address to use for stack
+        :param stack_size:              Size of stack in bytes
+        :param mode:                    UC_MODE to use (UC_MODE_32/UC_MODE_64)
+        :param loglevel:                The loglevel to use with the logger
+        :param handle_mem_read_errors:  Attempt to skip mem read errors
+        :param trace:                   Enable Instruction tracing
+        """
+
+        self.stack_data = ""
+        self.debug = debug
+        self.trace = trace
+        self.read_switch = False
+        self.decoded_stack = ""
+        self.mode = mode
+
+        self.write_switch = False
+        self.last_write_address = 0
+        self.first_write_address = 0
+        self.handle_mem_read_errors = handle_mem_read_errors
+
+        self.write_address_list = []
+
+        super().__init__(code_base, stack_base, stack_size, mode, logger)
 
     def hook_mem_access(self, uc, access, address, size, value, user_data):
         """
@@ -227,30 +301,6 @@ class SUE(object):
                         self.logger.debug('Setting %s to 1' % reg)
                         mu.reg_write(self.RegisterMap[reg], 1)
 
-    def trace_code(self, mu, address, size, user_data):
-        """
-        Hook to emit trace information to ida
-        :param mu:
-        :param address:
-        :param size:
-        :param user_data:
-        :return:
-        """
-        comment = ""
-        for x in range(2):
-            if idc.get_operand_type(address, x) == idaapi.o_reg:
-                try:
-                    if comment:
-                        comment += ", "
-                    reg_data = mu.reg_read(self.RegisterMap[idc.print_operand(address, x)])
-                    comment += "%s: 0x%x" % (idc.print_operand(address, x), reg_data)
-                except KeyError:
-                    pass
-
-        if comment:
-            idc.set_cmt(address, comment, 0)
-        self.logger.debug(comment)
-
     def hook_mem_invalid(self, uc, access, address, size, value, user_data):
         rip = uc.reg_read(UC_X86_REG_RIP)
 
@@ -263,6 +313,7 @@ class SUE(object):
 
             if self.handle_mem_read_errors:
                 self.logger.debug("Read error..attempting to handle")
+
                 if address == 0:
                     # Trying to read from null
                     # for now return False
@@ -273,66 +324,6 @@ class SUE(object):
                     uc.mem_map(address, mem_size)
                     return True
         return False
-
-    def emulate(self, start_address, end_address, hooks, timeout=1):
-        """
-
-        :param start_address:
-        :param end_address:
-        :param hooks:
-        :param timeout:
-        :return:
-        """
-        mu = self._setup_emulator()
-        self._map_full_file(mu)
-
-        for reg in SUE.RegisterMap.values():
-            mu.reg_write(reg, 0)
-
-        # Setup stack
-        mu.mem_map(self.stack_base, self.stack_size)
-        stack_offset = int(self.stack_base + (self.stack_size / 2))
-        mu.reg_write(UC_X86_REG_ESP, stack_offset)
-        mu.reg_write(UC_X86_REG_EBP, stack_offset)
-
-        # Add hooks
-        if hooks:
-            for hook in hooks:
-                mu.hook_add(hook[0], hook[1])
-
-        self.logger.debug("Starting Emulation")
-
-        # emulate code
-        mu.emu_start(start_address, end_address, timeout=timeout * UC_SECOND_SCALE)
-
-        if timeout > 0:
-            ip = UC_X86_REG_EIP
-            if self.mode == UC_MODE_64:
-                ip = UC_X86_REG_RIP
-            ip_offset = mu.reg_read(ip)
-            self.logger.debug("RIP: %x" % ip_offset)
-            self.logger.debug("Expected end: %x" % end_address)
-            if end_address != ip_offset:
-                raise EmulationTimeout()
-
-        self.logger.debug("Emulation Complete..")
-
-        return mu
-
-    def emulate_trace(self, start_address, end_address):
-        hooks = [
-            (UC_HOOK_CODE, self.trace_code)
-        ]
-        self.logger.debug("Starting Trace")
-        mu = self.emulate(start_address, end_address, hooks)
-        self.logger.debug("Trace Complete")
-
-        for reg in self.RegisterMap.keys():
-            try:
-                self.logger.info("%s: %x" % (reg, mu.reg_read(self.RegisterMap[reg])))
-            except Exception as ex:
-                self.logger.error("Error reading register :: %s" % reg)
-                self.logger.error("Error: %s" % ex)
 
     def _get_func_decoded(self, mu, mode):
         result = {}
@@ -540,4 +531,5 @@ class SUE(object):
                 self.decoded_stack = ""
                 return self.deobfuscate_stack(start_address, end_address, retry=1)
             else:
+                print(e)
                 self.logger.error(" [!] Fatal error emulating [%s]" % e)
