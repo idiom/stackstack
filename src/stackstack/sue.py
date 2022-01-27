@@ -146,13 +146,14 @@ class BaseEmulator(object):
                 end_address = idaapi.getseg(segment).end_ea
         return end_address
 
-    def emulate(self, start_address, end_address, hooks, timeout=1):
+    def emulate(self, start_address, end_address, hooks, timeout=1, init_regs=[]):
         """
 
         :param start_address:
         :param end_address:
         :param hooks:
         :param timeout:
+        :param init_regs:   Array of tuples used to initialize register values before emulation
         :return:
         """
         mu = self.setup_emulator()
@@ -160,6 +161,10 @@ class BaseEmulator(object):
 
         for reg in SUE.RegisterMap.values():
             mu.reg_write(reg, 0)
+
+        if init_regs:
+            for idef in init_regs:
+                mu.reg_write(SUE.RegisterMap[idef[0]], idef[1])
 
         # Setup stack
         mu.mem_map(self.stack_base, self.stack_size)
@@ -325,6 +330,15 @@ class SUE(BaseEmulator):
                     return True
         return False
 
+    def _get_printable_stack(self, mu):
+        try:
+            sdata = mu.mem_read(self.stack_base, self.stack_size)
+            sdata = sdata.strip(b"\x00")
+            return sdata.decode('utf-8', 'ignore')
+        except TypeError as te:
+            self.logger.error(te)
+            return ""
+
     def _get_func_decoded(self, mu, mode):
         result = {}
         data = ''
@@ -367,7 +381,7 @@ class SUE(BaseEmulator):
         else:
             return indata.decode("utf-8")
 
-    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0, impl_type=-1):
+    def deobfuscate_stack(self, start_address, end_address, retry=0, string_length=0, impl_type=-1, init_regs=[]):
         """
         Primarily tested with ADVObfuscated strings. Works with similar methods which write obfuscated bytes to the
         stack, deobfucstate them, and return the result.
@@ -392,7 +406,7 @@ class SUE(BaseEmulator):
                 (UC_HOOK_CODE, self.hook_code)
             ]
             try:
-                mu = self.emulate(start_address, end_address, hooks)
+                mu = self.emulate(start_address, end_address, hooks, init_regs=init_regs)
             except EmulationTimeout:
                 self.logger.debug("Emulation Timeout...setting patch_inc hook")
                 hooks = [
@@ -415,7 +429,11 @@ class SUE(BaseEmulator):
 
             stack_data = b""
 
-            self.logger.debug("Raw: %s" % self.stack_data)
+            # self.logger.debug("Raw: %s" % self._get_raw_stack_data(mu))
+
+            if not self.decoded_stack:
+                self.decoded_stack = self._get_printable_stack(mu)
+
             self.logger.debug("Lazy Stack: %s\n\n" % self.decoded_stack)
 
             self.logger.debug("impl_type: %s" % impl_type)
@@ -531,5 +549,4 @@ class SUE(BaseEmulator):
                 self.decoded_stack = ""
                 return self.deobfuscate_stack(start_address, end_address, retry=1)
             else:
-                print(e)
                 self.logger.error(" [!] Fatal error emulating [%s]" % e)

@@ -15,9 +15,9 @@ class YaraScanner(ScanEngineBase):
 
     """
 
-    def __init__(self, rule_file=None, rules=[], loglevel=logging.DEBUG):
-        self.logger = logging.getLogger('stackstack')
-        self.logger.setLevel(loglevel)
+    def __init__(self, logger, rule_file=None, rules=[]):
+        self.logger = logger
+        self.logger.info("Init YaraScanner")
 
         if rule_file:
             # load external rule file.
@@ -61,6 +61,7 @@ class YaraScanner(ScanEngineBase):
 
     def _compile_rules(self, rules):
         compiled = []
+        self.logger.error("Compiling rules")
         for rule in rules:
             try:
                 compiled.append(yara.compile(source=rule))
@@ -78,6 +79,8 @@ class YaraScanner(ScanEngineBase):
         :return:
         """
         results = {}
+
+        self.logger.error("Scanning functions")
         for func_entry in idautils.Functions():
             if ignore_libs:
                 if idc.get_func_attr(func_entry, idc.FUNCATTR_FLAGS) & idc.FUNC_LIB:
@@ -118,6 +121,7 @@ class YaraScanner(ScanEngineBase):
         :return:
         """
         values = []
+        self.logger.error("Scanning function")
         for rule in self.rules:
             last_match_offset = 0
             matches = rule.match(data=data)

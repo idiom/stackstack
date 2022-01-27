@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.07 - 2022-01-15
+ - Updates to better handle different obfuscation methods.
+ - Refactoring
+ - Update how plugin detects hexrays 
+ - Remove POC patching code
+ - Minor updates and bug fixes
+
 ## 1.06 - 2021-08-25
  - BUGFIX: Fix issue with the emulator stack setup
  - Improve backtracing 32bit code blocks 
