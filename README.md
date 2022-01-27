@@ -17,10 +17,6 @@ Simple Unicorn emulation plugin. I originally developed the plugin as a quick wa
 ## Configuration
 
 - `loglevel`: Log level to use (DEBUG, ERROR, INFO...). Default: `DEBUG`
-- `patch`: Automated binary patching. Default: `True`
-- `patch_type`: Type of patching to use. Default: `1`
-- `patch_section_name`: Name of section used for deobfuscated strings. Default: `.stackstack`,
-- `patch_section_size`: Size of section. Default: `0x1000`,
 - `ext_yara_file`: External yara file to use for automated scanning. Defaults to `stackem.yara`
 - `bookmarks`: Create bookmarks at decoded offsets. Default: `True`
 - `rename_func`: Rename function which contains a single AdvObfuscated string. This is useful where a function 
@@ -30,11 +26,7 @@ Simple Unicorn emulation plugin. I originally developed the plugin as a quick wa
 Example config file
 ```
 {
-    'loglevel': 'DEBUG',        
-    'patch': True,
-    'patch_type': 1,
-    'patch_section_name': '.stackstack',
-    'patch_section_size': 0x1000,
+    'loglevel': 'DEBUG',        \    
     'ext_yara_file': 'stackstack.yara',
     'bookmarks': True,
     'rename_func': False,    
