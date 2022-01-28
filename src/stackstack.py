@@ -13,7 +13,6 @@ import logging
 from stackstack.scan import YaraScanner
 from stackstack.sue import SUE
 from stackstack.utils import IdaHelpers, Update
-from stackstack.trace import SIT
 
 BAD = [0xffffffff, 0xffffffffffffffff]
 
@@ -283,10 +282,6 @@ class DecodeHandler(ida_kernwin.action_handler_t):
         if not start or not end:
             idc.warning("Error: Range not selected")
             return
-
-        sit = SIT(code_base=idaapi.get_imagebase(), loglevel=self.logger.level, mode=self.mode)
-        sit.emulate_trace(start, end)
-
 
     def _identify_impl_type(self, start, end):
         """
