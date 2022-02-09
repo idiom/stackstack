@@ -107,7 +107,7 @@ class StackStack(object):
             start = idc.next_head(start, end)
         return False
 
-    def scan_reg_incremet(self, blob_start, offset):
+    def scan_reg_increment(self, blob_start, offset):
         """
 
         Check if the block uses a register to increment the counter. Some samples will have something similar to
@@ -130,6 +130,10 @@ class StackStack(object):
         cmp_reg = None
         inc_reg = None
         while offset >= blob_start:
+
+            if offset <= function_start:
+                return None
+
             cursor += 1
             ins = ida_ua.insn_t()
             idaapi.decode_insn(ins, offset)
@@ -316,7 +320,7 @@ class DecodeHandler(ida_kernwin.action_handler_t):
             return
 
         if end:
-            ireg = self.stacks.scan_reg_incremet(start, end)
+            ireg = self.stacks.scan_reg_increment(start, end)
             iregs = []
             if ireg:
                 self.logger.debug("[*] Initializing [%s] to 1" % ireg)
