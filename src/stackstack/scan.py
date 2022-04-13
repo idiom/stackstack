@@ -26,8 +26,11 @@ class YaraScanner(ScanEngineBase):
         x64_rules = [
             """rule scan_a{strings: $ = {c6 45 ?? 00 c6 45 ?? ?? c6 45} condition: all of them}""",
             """rule scan_b{strings: $ = {c6 85 [2-3] ff ff 00 [0-2] c6 85 [2-3] ff ff} condition: all of them}""",
-            """rule scan_c{strings: $ = {(c6|c7) 4? [2-5] (c6|c7) 4? } condition: all of them}""",
-            """rule scan_d{strings: $ = {(c6|c7) 4? ?? 00 (c6|c7) 4? ?? ?? (c6|c7) 4? } condition: all of them}"""
+            """rule scan_c{strings: $ = {(c6|c7) 4? [2-6] (c6|c7) 4? } condition: all of them}""",
+            """rule scan_d{strings: $ = {(c6|c7) 4? ?? 00 (c6|c7) 4? ?? ?? (c6|c7) 4? } condition: all of them}""",
+            """rule scan_e{strings: $ = {(c6|c7) 85 [4] ?? 00 00 00 [0-5] (c6|c7) 85 ?? 0? 00 00 ??} condition: all of them}""",
+            """rule scan_f{strings: $ = {(c6|c7) 4? [2-3] 00 00 00 [0-5] 8B 4? ??} condition: all of them}""",
+            """rule scan_g{strings: $ = {(c6|c7) 85 ?? 0? 00 00 ?? (c6|c7) 85 ?? 0? 00 00 ??} condition: all of them}""",
         ]
 
         x86_rules = [
@@ -90,8 +93,8 @@ class YaraScanner(ScanEngineBase):
             func_name = idc.get_func_name(func_entry)
 
             func_data = idc.get_bytes(func_entry, idc.get_func_attr(func_entry, idc.FUNCATTR_END) - func_entry)
+            match_strings = []
             for rule in self.rules:
-                last_match_offset = 0
                 matches = rule.match(data=func_data)
 
                 if not matches:
@@ -99,18 +102,21 @@ class YaraScanner(ScanEngineBase):
 
                 for rule_match in matches:
                     for match in rule_match.strings:
+                        match_strings.append(match)
 
-                        if last_match_offset > match[0] > last_match_offset - match_overlay_range:
-                            continue
-                        elif last_match_offset < match[0] < last_match_offset + match_overlay_range:
-                            continue
+            last_match_offset = 0
+            for match in sorted(match_strings, key=lambda d: d[0]): # order matches by ascending offset
+                if last_match_offset > match[0] > last_match_offset - match_overlay_range:
+                    continue
+                elif last_match_offset < match[0] < last_match_offset + match_overlay_range:
+                    continue
 
-                        self.logger.debug("Match at [%x]" % (func_entry + match[0]))
-                        last_match_offset = match[0]
-                        try:
-                            results[func_name] += 1
-                        except KeyError:
-                            results[func_name] = 1
+                self.logger.debug("Match at [%x]" % (func_entry + match[0]))
+                last_match_offset = match[0]
+                try:
+                    results[func_name] += 1
+                except KeyError:
+                    results[func_name] = 1
         return results
 
     def scan_function(self, data, match_overlay_range=64):
@@ -121,9 +127,9 @@ class YaraScanner(ScanEngineBase):
         :return:
         """
         values = []
+        match_strings = []
         self.logger.error("Scanning function")
         for rule in self.rules:
-            last_match_offset = 0
             matches = rule.match(data=data)
 
             if not matches:
@@ -131,13 +137,19 @@ class YaraScanner(ScanEngineBase):
 
             for rule_match in matches:
                 for match in rule_match.strings:
-                    if last_match_offset > match[0] > last_match_offset - match_overlay_range:
-                        continue
-                    elif last_match_offset < match[0] < last_match_offset + match_overlay_range:
-                        continue
+                    match_strings.append(match)
 
-                    self.logger.debug("Match at %x" % match[0])
-                    last_match_offset = match[0]
-                    values.append(match[0])
+        # Assign last_match_offset with the negative value of match_overlay_range
+        # to avoid skipping matches at the beginning of the function
+        last_match_offset = -abs(match_overlay_range)
+        for match in sorted(match_strings, key=lambda d: d[0]): # order matches by ascending offset
+            if last_match_offset > match[0] > last_match_offset - match_overlay_range:
+                continue
+            elif last_match_offset < match[0] < last_match_offset + match_overlay_range:
+                continue
+
+            self.logger.debug("Match at %x" % match[0])
+            last_match_offset = match[0]
+            values.append(match[0])
         return values
 
