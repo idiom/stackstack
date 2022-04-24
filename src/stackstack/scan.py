@@ -19,10 +19,6 @@ class YaraScanner(ScanEngineBase):
         self.logger = logger
         self.logger.info("Init YaraScanner")
 
-        if rule_file:
-            # load external rule file.
-            pass
-
         x64_rules = [
             """rule scan_a{strings: $ = {c6 45 ?? 00 c6 45 ?? ?? c6 45} condition: all of them}""",
             """rule scan_b{strings: $ = {c6 85 [2-3] ff ff 00 [0-2] c6 85 [2-3] ff ff} condition: all of them}""",
@@ -38,10 +34,8 @@ class YaraScanner(ScanEngineBase):
             """rule scan_b{strings: $ = {c6 4? [2-3] c6 4? [2-3] c6 4? [2-3] c6 4?} condition: all of them}""",
             """rule scan_c{strings: $ = {8b ?? ?? ff ff ff 34 ?? 88 ?? ?? ff ff ff 8b ?? ?? ff ff ff} condition: all of them}""",
             """rule scan_d{strings: $ = {c7 00 [4] c7 40 [5] c7 40} condition: all of them}""",
-            """rule scan_e{strings: $ = {c6 85 [5] c6 85 [5] c6 85} condition: all of them}"""
+            """rule scan_e{strings: $ = {c6 85 [5] c6 85 [5] c6 85} condition: all of them}""",
             """rule scan_f{strings: $ = {0f 28 05 [4] 0f 11 [5] 0f} condition: all of them}"""
-                    
-            """"""
         ]
 
         self.raw_rules = []
@@ -54,13 +48,20 @@ class YaraScanner(ScanEngineBase):
         self.raw_rules.extend(rules)
         self.rules = self._compile_rules(self.raw_rules)
 
-    def _compile_ext_rules(self, rulefile):
-        if os.path.isfile(rulefile):
-            try:
-                ext_rules = yara.compile(rulefile)
-                self.rules.extend(ext_rules)
-            except Exception as ex:
-                self.logger.error("Error loading rulefile: %s" % ex)
+        if rule_file:
+            self.logger.info(f"Processing rule file {rule_file}")
+            self._compile_ext_rules(rule_file)
+
+    def _compile_ext_rules(self, ext_rule_path):
+        if not os.path.isfile(ext_rule_path):
+            return
+        try:
+            compiled = yara.compile(filepath=ext_rule_path)
+            if not self.rules:
+                self.rules = []
+            self.rules.append(compiled)
+        except Exception as ex:
+            self.logger.error("Error loading rulefile: %s" % ex)
 
     def _compile_rules(self, rules):
         compiled = []
@@ -95,6 +96,7 @@ class YaraScanner(ScanEngineBase):
             func_data = idc.get_bytes(func_entry, idc.get_func_attr(func_entry, idc.FUNCATTR_END) - func_entry)
             match_strings = []
             for rule in self.rules:
+                self.logger.debug("Skipping lib function %s" % idc.get_func_name(func_entry))
                 matches = rule.match(data=func_data)
 
                 if not matches:
@@ -124,6 +126,7 @@ class YaraScanner(ScanEngineBase):
         Scan the current function for obfuscated blobs
 
         :param data:
+        :param match_overlay_range:
         :return:
         """
         values = []
